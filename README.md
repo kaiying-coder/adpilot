@@ -1,98 +1,134 @@
-# vinext-starter
+# AdPilot
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+**AI-powered advertising anomaly analysis and automated response platform.**
 
-## Prerequisites
+AdPilot is a portfolio-grade internal productivity tool inspired by advertising
+monetization workflows. It detects anomalies in a reproducible campaign dataset,
+investigates them with a tool-using agent, retrieves approved runbooks and
+historical cases, requires human approval for risky actions, and evaluates every
+stage against a ground-truth suite.
 
-- Node.js `>=22.13.0`
+> All advertising data and response actions are simulated. The public demo uses
+> no paid model or external advertising API.
 
-## Quick Start
+## Live demo
+
+https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
+
+The demo supports Chinese and English. Three seeded incidents are available:
+
+1. US mobile CTR decline after a landing-page latency regression.
+2. DE desktop spend spike after an incorrect bid multiplier.
+3. UK mobile revenue decline after a conversion-tag change.
+
+## Product workflow
+
+```mermaid
+flowchart LR
+  A[Campaign metrics] --> B[Anomaly detector]
+  B --> C[Incident]
+  C --> D[Agent plan]
+  D --> E[Metric tools]
+  D --> F[RAG knowledge search]
+  E --> G[Verified root cause]
+  F --> G
+  G --> H{Risk check}
+  H -->|High risk| I[Human approval]
+  I --> J[Simulated action]
+  J --> K[Recovery monitoring]
+  K --> L[Evaluation]
+```
+
+## Architecture
+
+```mermaid
+flowchart TB
+  UI[Next.js product UI] --> API[AdPilot REST API]
+  API --> DATA[Deterministic ad dataset]
+  API --> DETECTOR[Baseline anomaly detector]
+  API --> AGENT[Investigation state machine]
+  AGENT --> TOOLS[Typed analysis tools]
+  AGENT --> RAG[Weighted knowledge retrieval]
+  API --> EVAL[Ground-truth evaluation suite]
+```
+
+The browser normally reads through the API. A local deterministic fallback keeps
+the demo usable when an API request fails.
+
+## API
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/metrics?market=US&device=Mobile` | Filtered metrics, summary, and trend |
+| `GET /api/anomalies` | Detected incidents and detector quality |
+| `GET /api/investigations/:id` | Agent workflow and tool trace |
+| `POST /api/investigations/:id/approve` | Explicit simulated approval |
+| `GET /api/knowledge?q=latency` | Ranked knowledge hits with citations |
+| `GET /api/evaluations` | Detector, retrieval, agent, and cost metrics |
+
+## Run locally
+
+Requirements: Node.js 22+ and either npm or pnpm.
+
+```bash
+git clone <your-github-repository-url>
+cd adpilot
+npm run demo
+```
+
+Or run the steps manually:
 
 ```bash
 npm install
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Open the local URL printed in the terminal. The demo seeds itself automatically;
+no database, API key, or paid service is required.
 
-## Included Shape
+## Test
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+npm test
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+The suite verifies:
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+- product shell rendering;
+- filtered metrics API output;
+- 3/3 ground-truth anomaly detection with zero false positives;
+- ranked knowledge retrieval with citations;
+- explicit approval guardrails and simulated execution.
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+## Trust and safety boundaries
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+- No real advertising account is connected.
+- All write actions are simulated.
+- High-risk actions require explicit approval.
+- Agent conclusions expose their data and knowledge sources.
+- Retrieval returns citations and refuses unsupported results.
+- The deterministic mode costs `$0` per run.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## Tech stack
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+- TypeScript, React, Next.js-compatible Vinext runtime
+- Cloudflare Worker-compatible API routes
+- Deterministic campaign data and statistical baseline rules
+- Tool-based agent workflow with an auditable state machine
+- Local weighted retrieval over approved runbooks and historical cases
+- Node test runner for end-to-end API verification
 
-## Useful Commands
+## Interview demo
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+1. Filter to **US / Mobile** and inspect the revenue and CTR trend.
+2. Open **Incidents** and select `INC-2407`.
+3. Review the agent tool trace and cited runbook.
+4. Approve the simulated rollback.
+5. Open **Evaluations** and explain precision, recall, F1, and zero paid API cost.
 
-## Learn More
+## Roadmap
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- Optional vector embeddings and reranking behind the same retrieval interface.
+- Durable multi-user incident history.
+- Optional bring-your-own-model adapter.
+- Real advertising connectors behind read-only permissions.

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { investigateIncident } from "../../../agent";
 import { detectedAnomalies } from "../../../data";
+import { buildWorkflow } from "../../../workflow";
 
 export async function GET(
   _request: NextRequest,
@@ -14,5 +15,6 @@ export async function GET(
     incident,
     status: incident.status === "Resolved" ? "completed" : "awaiting_approval",
     toolResults: investigateIncident(incident),
+    workflow: buildWorkflow(incident, incident.status === "Resolved"),
   });
 }

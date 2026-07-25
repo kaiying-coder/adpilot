@@ -11,12 +11,14 @@ import {
   type Market,
 } from "./data";
 import { investigateIncident } from "./agent";
+import { searchKnowledge } from "./knowledge";
 
 export default function Home() {
   const [view, setView] = useState<"overview" | "incidents" | "runs" | "knowledge" | "evaluations">("overview");
   const [language, setLanguage] = useState<"zh" | "en">("zh");
   const [selected, setSelected] = useState(0);
   const [approved, setApproved] = useState(false);
+  const [approvalStatus, setApprovalStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
   const [showEvidence, setShowEvidence] = useState(false);
@@ -77,6 +79,23 @@ export default function Home() {
       `${incident.title} is the highest-impact matching event. ${incident.cause}. ` +
       `Evidence: ${incident.evidence}. Recommended action: ${incident.action}.`
     );
+  }
+
+  async function approveAction() {
+    setApprovalStatus("saving");
+    const response = await fetch(`/api/investigations/${incident.id}/approve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ decision: "approve" }),
+    });
+    if (!response.ok) {
+      setApprovalStatus("idle");
+      return;
+    }
+    const payload = await response.json();
+    setApproved(true);
+    setApprovalStatus("saved");
+    localStorage.setItem(`adpilot:${incident.id}:approval`, JSON.stringify(payload.audit));
   }
 
   return (
@@ -162,7 +181,7 @@ export default function Home() {
             </div>
             <div className={`approval ${approved ? "approved" : ""}`}>
               <div><span>{approved ? "✓" : "!"}</span><div><strong>{approved ? "Action approved" : "Human approval required"}</strong><p>{approved ? "Simulated action queued. Monitoring window started." : `${incident.action}. Estimated recovery: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
-              {!approved && <div className="approvalActions"><button onClick={() => setApproved(true)}>Approve action</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? "Hide evidence" : "Review evidence"}</button></div>}
+              {!approved && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? "Saving…" : "Approve action"}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? "Hide evidence" : "Review evidence"}</button></div>}
             </div>
             {showEvidence && (
               <div className="evidenceDrawer">
@@ -215,6 +234,8 @@ function ModuleView({
     ? { incidents: "异常中心", runs: "Agent运行记录", knowledge: "知识库", evaluations: "评估中心" }
     : { incidents: "Incident center", runs: "Agent runs", knowledge: "Knowledge base", evaluations: "Evaluations" };
   const quality = evaluateDetector(detectedAnomalies);
+  const [knowledgeQuery, setKnowledgeQuery] = useState("");
+  const knowledgeHits = useMemo(() => searchKnowledge(knowledgeQuery, 6), [knowledgeQuery]);
 
   return (
     <section className="modulePage">
@@ -242,14 +263,15 @@ function ModuleView({
         ))}
       </div>}
 
-      {view === "knowledge" && <div className="knowledgeGrid">
-        {[
-          ["RB-014", "CTR下降排查手册 / CTR decline runbook", "CTR · latency · creative"],
-          ["RB-021", "花费异常排查手册 / Spend spike runbook", "Spend · bid · budget"],
-          ["RB-008", "收入下降排查手册 / Revenue decline runbook", "Revenue · tracking · CVR"],
-          ["INC-2319", "移动端延迟历史案例 / Mobile latency case", "Historical case · verified"],
-        ].map((doc) => <article key={doc[0]}><span>APPROVED</span><strong>{doc[1]}</strong><p>{doc[2]}</p><small>{doc[0]} · GET /api/knowledge</small></article>)}
-      </div>}
+      {view === "knowledge" && <>
+        <div className="knowledgeSearch">
+          <input value={knowledgeQuery} onChange={(event) => setKnowledgeQuery(event.target.value)} placeholder={language === "zh" ? "搜索 CTR、延迟、预算或转化追踪…" : "Search CTR, latency, budget, or conversion tracking…"} />
+          <span>{knowledgeHits.length} results · GET /api/knowledge</span>
+        </div>
+        <div className="knowledgeGrid">
+          {knowledgeHits.map((hit) => <article key={hit.document.id}><span>{hit.document.approved ? "APPROVED" : "DRAFT"} · SCORE {hit.score}</span><strong>{language === "zh" ? hit.document.titleZh : hit.document.titleEn}</strong><p>{hit.excerpt}</p><small>{hit.citation} · {hit.document.type}</small></article>)}
+        </div>
+      </>}
 
       {view === "evaluations" && <div className="evaluationPage">
         <article><strong>{(quality.precision * 100).toFixed(0)}%</strong><span>Precision / 精确率</span></article>

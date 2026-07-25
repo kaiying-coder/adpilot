@@ -1,4 +1,5 @@
 import { adMetrics, type DetectedAnomaly } from "./data";
+import { searchKnowledge } from "./knowledge";
 
 export type ToolResult = {
   tool: string;
@@ -6,24 +7,6 @@ export type ToolResult = {
   result: string;
   source: string;
   status: "success";
-};
-
-const runbooks = {
-  CTR: {
-    id: "RB-014",
-    title: "CTR decline investigation",
-    guidance: "Check market and device concentration, creative fatigue, page latency, and recent releases.",
-  },
-  Spend: {
-    id: "RB-021",
-    title: "Spend spike investigation",
-    guidance: "Compare bid, budget and targeting changes before assuming traffic quality shifted.",
-  },
-  Revenue: {
-    id: "RB-008",
-    title: "Revenue decline investigation",
-    guidance: "Separate traffic loss from conversion loss and verify tracking integrity.",
-  },
 };
 
 const changeLog = [
@@ -42,7 +25,7 @@ export function investigateIncident(incident: DetectedAnomaly): ToolResult[] {
   const change = changeLog.find(
     (item) => item.market === incident.market && item.device === incident.device
   );
-  const runbook = runbooks[incident.metric];
+  const knowledge = searchKnowledge(`${incident.metric} ${incident.market} ${incident.device} ${incident.cause}`, 2);
 
   return [
     {
@@ -62,8 +45,8 @@ export function investigateIncident(incident: DetectedAnomaly): ToolResult[] {
     {
       tool: "retrieve_runbook",
       purpose: "Ground the investigation plan",
-      result: `${runbook.id} · ${runbook.title}: ${runbook.guidance}`,
-      source: runbook.id,
+      result: knowledge.map((hit) => `${hit.citation}: ${hit.excerpt}`).join(" "),
+      source: knowledge.map((hit) => hit.citation).join(", "),
       status: "success",
     },
     {
