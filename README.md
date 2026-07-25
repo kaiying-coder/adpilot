@@ -17,6 +17,13 @@ https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
 
 ![AdPilot — AI advertising anomaly investigation](./public/og.png)
 
+### Product workflow preview
+
+The animation below is a product-workflow walkthrough generated from the same
+five modules used in the live demo; it is not a recording of a real ad account.
+
+![AdPilot product workflow walkthrough](./public/workflow-demo.gif)
+
 The demo supports Chinese and English. Three seeded incidents are available:
 
 1. US mobile CTR decline after a landing-page latency regression.
