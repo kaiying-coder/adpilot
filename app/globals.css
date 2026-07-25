@@ -3,7 +3,7 @@
 :root { --ink:#17201d; --muted:#6e7773; --line:#e5e9e6; --green:#1a6b52; --mint:#eaf5ef; --paper:#fbfcfa; }
 * { box-sizing:border-box; }
 body { margin:0; background:#f3f5f2; color:var(--ink); font-family:Arial, Helvetica, sans-serif; }
-button,input { font:inherit; }
+button,input,select { font:inherit; }
 button { cursor:pointer; }
 .shell { min-height:100vh; display:flex; }
 .sidebar { position:fixed; inset:0 auto 0 0; width:232px; background:#102e25; color:#dce9e3; padding:30px 18px 24px; display:flex; flex-direction:column; z-index:2; }
@@ -28,6 +28,11 @@ header p,.panelHead p { margin:0; color:var(--muted); font-size:12px; }
 .headerActions { display:flex; gap:9px; }.headerActions button { height:37px; border-radius:8px; }
 .iconButton { width:37px; border:1px solid var(--line); background:#fff; color:#55615c; }
 .primary { border:0; background:var(--green); color:#fff; padding:0 17px; font-size:12px; font-weight:700; }
+.filterBar { background:#fff;border:1px solid #e3e8e4;border-radius:12px;padding:12px 15px;margin-bottom:13px;display:flex;align-items:center;gap:16px;box-shadow:0 1px 2px #17322608 }
+.filterBar>div { margin-right:auto;display:grid;gap:3px }.filterBar strong { font-size:11px }.filterBar>div span { color:#7b8580;font-size:9px }
+.filterBar label { display:flex;align-items:center;gap:7px;color:#68726d;font-size:9px;font-weight:700 }
+.filterBar select { border:1px solid #dce3df;border-radius:6px;background:#fafcfb;padding:6px 24px 6px 8px;color:#273b34;font-size:9px;outline:none }
+.datasetBadge { color:#2f775d;background:#e8f4ee;border-radius:12px;padding:5px 8px;font-size:8px;font-weight:800;letter-spacing:.5px;white-space:nowrap }
 .metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-bottom:14px; }
 .metrics article,.panel { background:#fff; border:1px solid #e3e8e4; border-radius:12px; box-shadow:0 1px 2px #17322608; }
 .metrics article { padding:16px 17px; position:relative; min-height:120px; overflow:hidden; }
@@ -42,6 +47,9 @@ header p,.panelHead p { margin:0; color:var(--muted); font-size:12px; }
 .line { position:absolute; right:16px; bottom:28px; width:70px; height:20px; border-bottom:2px solid #56ad88; transform:skewY(-10deg); }
 .donut { position:absolute; right:16px; bottom:15px; width:42px; height:42px; border-radius:50%; background:conic-gradient(#287b60 92%,#e2ebe6 0); display:grid; place-items:center; }
 .donut:after { content:""; position:absolute; inset:5px; background:white; border-radius:50%; }.donut span { z-index:1; font-size:9px; color:#263d35; }
+.trendPanel { margin-bottom:14px;padding-bottom:13px }.legend { color:#65706b;font-size:9px;display:flex;align-items:center;gap:5px }.legend i { width:8px;height:8px;background:#3f8a6e;border-radius:2px }
+.chart { height:142px;display:grid;grid-template-columns:repeat(14,1fr);gap:7px;align-items:end;border-bottom:1px solid #dfe5e1;padding:8px 8px 0 }
+.chartColumn { height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0 }.chartColumn>i { display:block;width:min(22px,70%);background:linear-gradient(180deg,#4c9b7d,#a5d1bd);border-radius:4px 4px 1px 1px;transition:height .35s ease }.chartColumn span { font-size:7px;color:#77817c;opacity:0;transition:opacity .2s }.chartColumn:hover span { opacity:1 }.chartColumn small { font-size:7px;color:#8b938f;padding-bottom:4px }
 .contentGrid { display:grid; grid-template-columns:.9fr 1.1fr; gap:14px; margin-bottom:14px; }
 .panel { padding:18px; }.panelHead { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
 .panelHead h2 { margin:0 0 4px; font-size:14px; }.panelHead button { border:0; background:none; color:var(--green); font-size:10px; padding:3px; }
@@ -63,5 +71,5 @@ header p,.panelHead p { margin:0; color:var(--muted); font-size:12px; }
 .suggestions { margin-top:11px;display:flex;gap:6px;align-items:center }.suggestions span { font-size:8px;color:#8b938f }.suggestions button { border:1px solid #e3e8e5;background:#fff;border-radius:12px;padding:4px 8px;color:#5f6964;font-size:8px }
 .answer { margin-top:10px;padding:10px;background:#f0f7f3;border-left:3px solid #358264;border-radius:5px }.answer strong { font-size:9px;color:#276a51 }.answer p { margin:4px 0;font-size:9px;line-height:1.5 }.answer small { color:#75817b;font-size:8px }
 .quality { display:grid;grid-template-columns:1fr 1fr;gap:15px 10px }.quality div { display:grid;grid-template-columns:1fr auto;align-items:end;border-bottom:1px solid #edf0ee;padding-bottom:8px }.quality strong { font-family:Georgia,serif;font-size:20px;font-weight:500 }.quality span { grid-row:2;font-size:8px;color:#737c77 }.quality small { grid-row:1/3;grid-column:2;font-size:8px;color:#27815e }.quality small.down { color:#27815e }
-@media(max-width:1050px){.metrics{grid-template-columns:1fr 1fr}.contentGrid,.bottomGrid{grid-template-columns:1fr}}
-@media(max-width:720px){.sidebar{width:68px;padding:24px 9px}.brand{padding:0 8px 28px}.brand>span:last-child,.navItem:not(.active){font-size:0}.navItem{justify-content:center}.navItem b,.sideBottom{display:none}.workspace{margin-left:68px;width:calc(100% - 68px);padding:22px 16px}header{align-items:flex-start}.headerActions .iconButton{display:none}.metrics{grid-template-columns:1fr}.contentGrid,.bottomGrid{grid-template-columns:1fr}.incident{grid-template-columns:34px 1fr 50px 12px}.incident .status{display:none}.approval{align-items:flex-start;flex-direction:column}}
+@media(max-width:1050px){.metrics{grid-template-columns:1fr 1fr}.contentGrid,.bottomGrid{grid-template-columns:1fr}.filterBar{flex-wrap:wrap}.filterBar>div{width:100%}.chart{gap:3px}}
+@media(max-width:720px){.sidebar{width:68px;padding:24px 9px}.brand{padding:0 8px 28px}.brand>span:last-child,.navItem:not(.active){font-size:0}.navItem{justify-content:center}.navItem b,.sideBottom{display:none}.workspace{margin-left:68px;width:calc(100% - 68px);padding:22px 16px}header{align-items:flex-start}.headerActions .iconButton{display:none}.metrics{grid-template-columns:1fr}.contentGrid,.bottomGrid{grid-template-columns:1fr}.incident{grid-template-columns:34px 1fr 50px 12px}.incident .status{display:none}.approval{align-items:flex-start;flex-direction:column}.datasetBadge{width:100%;text-align:center}.chartColumn span{display:none}}
