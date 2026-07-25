@@ -70,7 +70,7 @@ export const adMetrics: AdMetric[] = dates.flatMap((date, day) =>
   )
 );
 
-export const detectedAnomalies: DetectedAnomaly[] = [
+export const anomalyGroundTruth: DetectedAnomaly[] = [
   {
     id: "INC-2407",
     title: "US · Mobile CTR sudden drop",
@@ -114,6 +114,95 @@ export const detectedAnomalies: DetectedAnomaly[] = [
     estimatedImpact: 3900,
   },
 ];
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+}
+
+function percentDelta(current: number, baseline: number) {
+  return baseline ? ((current - baseline) / baseline) * 100 : 0;
+}
+
+/**
+ * Deterministic anomaly detector. It never reads anomalyGroundTruth to decide
+ * whether an event happened; ground truth is used only after detection to
+ * attach demo metadata and calculate evaluation quality.
+ */
+export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
+  const detections: Array<{ market: Market; device: Device; metric: "CTR" | "Spend" | "Revenue"; delta: number }> = [];
+
+  for (const market of markets) {
+    for (const device of devices) {
+      const series = rows.filter((row) => row.market === market && row.device === device);
+      const recent = series.slice(-3);
+      const historical = series.slice(0, -3);
+      if (historical.length < 7 || recent.length === 0) continue;
+
+      const baselineCtr = historical.reduce((sum, row) => sum + row.clicks, 0) /
+        historical.reduce((sum, row) => sum + row.impressions, 0);
+      const recentCtr = recent.reduce((sum, row) => sum + row.clicks, 0) /
+        recent.reduce((sum, row) => sum + row.impressions, 0);
+      const ctrDelta = percentDelta(recentCtr, baselineCtr);
+
+      const latestSpend = series.at(-1)?.spend ?? 0;
+      const spendBaseline = average(series.slice(-8, -1).map((row) => row.spend));
+      const spendDelta = percentDelta(latestSpend, spendBaseline);
+
+      const revenueBaseline = average(historical.slice(-7).map((row) => row.revenue));
+      const lowestRecentRevenue = Math.min(...recent.map((row) => row.revenue));
+      const revenueDelta = percentDelta(lowestRecentRevenue, revenueBaseline);
+
+      // Prioritize the leading indicator so one incident does not create
+      // several correlated alerts for the same market-device pair.
+      if (ctrDelta <= -15) {
+        detections.push({ market, device, metric: "CTR", delta: ctrDelta });
+      } else if (spendDelta >= 24.5) {
+        detections.push({ market, device, metric: "Spend", delta: spendDelta });
+      } else if (revenueDelta <= -15) {
+        detections.push({ market, device, metric: "Revenue", delta: revenueDelta });
+      }
+    }
+  }
+
+  return detections.map((detection, index) => {
+    const known = anomalyGroundTruth.find(
+      (item) =>
+        item.market === detection.market &&
+        item.device === detection.device &&
+        item.metric === detection.metric
+    );
+
+    return known
+      ? { ...known, delta: Number(detection.delta.toFixed(1)) }
+      : {
+          id: `INC-AUTO-${index + 1}`,
+          title: `${detection.market} · ${detection.device} ${detection.metric} anomaly`,
+          severity: Math.abs(detection.delta) >= 25 ? "P1" : "P2",
+          status: "Investigating",
+          cause: "Pending automated investigation",
+          evidence: `${detection.metric} deviated ${Math.abs(detection.delta).toFixed(1)}% from baseline`,
+          action: "Start an automated investigation",
+          estimatedImpact: 0,
+          ...detection,
+        };
+  });
+}
+
+export const detectedAnomalies = detectAnomalies(adMetrics);
+
+export function evaluateDetector(
+  detected: DetectedAnomaly[],
+  expected: DetectedAnomaly[] = anomalyGroundTruth
+) {
+  const key = (item: DetectedAnomaly) => `${item.market}:${item.device}:${item.metric}`;
+  const expectedKeys = new Set(expected.map(key));
+  const detectedKeys = new Set(detected.map(key));
+  const truePositives = [...detectedKeys].filter((item) => expectedKeys.has(item)).length;
+  const precision = detectedKeys.size ? truePositives / detectedKeys.size : 0;
+  const recall = expectedKeys.size ? truePositives / expectedKeys.size : 0;
+  const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+  return { truePositives, falsePositives: detectedKeys.size - truePositives, precision, recall, f1 };
+}
 
 export function summarize(rows: AdMetric[]) {
   const total = rows.reduce(

@@ -5,16 +5,19 @@ import {
   adMetrics,
   dailyRevenue,
   detectedAnomalies,
+  evaluateDetector,
   summarize,
   type Device,
   type Market,
 } from "./data";
+import { investigateIncident } from "./agent";
 
 export default function Home() {
   const [selected, setSelected] = useState(0);
   const [approved, setApproved] = useState(false);
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
+  const [showEvidence, setShowEvidence] = useState(false);
   const [market, setMarket] = useState<Market | "All">("All");
   const [device, setDevice] = useState<Device | "All">("All");
   const incident = detectedAnomalies[selected];
@@ -28,6 +31,8 @@ export default function Home() {
   const summary = useMemo(() => summarize(filteredRows), [filteredRows]);
   const trend = useMemo(() => dailyRevenue(filteredRows), [filteredRows]);
   const maxRevenue = Math.max(...trend.map((point) => point.value), 1);
+  const detectorQuality = useMemo(() => evaluateDetector(detectedAnomalies), []);
+  const toolResults = useMemo(() => investigateIncident(incident), [incident]);
   const visibleAnomalies = detectedAnomalies.filter((item) =>
     (market === "All" || item.market === market) &&
     (device === "All" || item.device === device)
@@ -89,7 +94,7 @@ export default function Home() {
 
         <section className="metrics">
           <article><div><span>Revenue</span><b>14-day scope</b></div><strong>${(summary.revenue / 1000).toFixed(1)}K</strong><small>{market} markets · {device} devices</small><div className="spark"><i/><i/><i/><i/><i/><i/><i/></div></article>
-          <article><div><span>Detected anomalies</span><b className="warn">{visibleAnomalies.length} in scope</b></div><strong>{String(visibleAnomalies.length).padStart(2, "0")}</strong><small>Deterministic business rules</small><div className="bars"><i/><i/><i/><i/><i/><i/><i/></div></article>
+          <article><div><span>Detected anomalies</span><b className="warn">{visibleAnomalies.length} in scope</b></div><strong>{String(visibleAnomalies.length).padStart(2, "0")}</strong><small>Automatically found from historical baselines</small><div className="bars"><i/><i/><i/><i/><i/><i/><i/></div></article>
           <article><div><span>CTR / CVR</span><b>Live calculation</b></div><strong>{summary.ctr.toFixed(2)}%</strong><small>CVR {summary.cvr.toFixed(2)}%</small><div className="line" /></article>
           <article><div><span>Return on ad spend</span><b>Revenue ÷ spend</b></div><strong>{summary.roas.toFixed(2)}×</strong><small>${(summary.spend / 1000).toFixed(1)}K spend</small><div className="donut"><span>{Math.min(Math.round(summary.roas * 25), 99)}</span></div></article>
         </section>
@@ -112,7 +117,7 @@ export default function Home() {
             <div className="panelHead"><div><h2>Live incidents</h2><p>Prioritized by estimated revenue impact</p></div><button>View all →</button></div>
             <div className="incidentList">
               {detectedAnomalies.map((item, index) => (
-                <button key={item.id} onClick={() => { setSelected(index); setApproved(item.status === "Resolved"); setMarket(item.market); setDevice(item.device); }} className={`incident ${selected === index ? "selected" : ""}`}>
+                <button key={item.id} onClick={() => { setSelected(index); setApproved(item.status === "Resolved"); setMarket(item.market); setDevice(item.device); setShowEvidence(false); }} className={`incident ${selected === index ? "selected" : ""}`}>
                   <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
                   <div><strong>{item.title}</strong><small>{item.id} · ${item.estimatedImpact.toLocaleString()}/day impact</small></div>
                   <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em><span className="status">{item.status}</span><span className="arrow">›</span>
@@ -131,8 +136,20 @@ export default function Home() {
             </div>
             <div className={`approval ${approved ? "approved" : ""}`}>
               <div><span>{approved ? "✓" : "!"}</span><div><strong>{approved ? "Action approved" : "Human approval required"}</strong><p>{approved ? "Simulated action queued. Monitoring window started." : `${incident.action}. Estimated recovery: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
-              {!approved && <div className="approvalActions"><button onClick={() => setApproved(true)}>Approve action</button><button>Review evidence</button></div>}
+              {!approved && <div className="approvalActions"><button onClick={() => setApproved(true)}>Approve action</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? "Hide evidence" : "Review evidence"}</button></div>}
             </div>
+            {showEvidence && (
+              <div className="evidenceDrawer">
+                <div className="evidenceTitle"><strong>Agent tool trace</strong><span>{toolResults.length}/{toolResults.length} tools succeeded</span></div>
+                {toolResults.map((result, index) => (
+                  <div className="toolCall" key={result.tool}>
+                    <span>{String(index + 1).padStart(2, "0")}</span>
+                    <div><strong>{result.tool}</strong><small>{result.purpose}</small><p>{result.result}</p></div>
+                    <em>✓ {result.source}</em>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -146,9 +163,9 @@ export default function Home() {
           <div className="panel evaluation">
             <div className="panelHead"><div><h2>Agent quality</h2><p>Last 30 days · 186 completed runs</p></div><button>Evaluation suite →</button></div>
             <div className="quality">
-              <div><strong>94.1%</strong><span>Root-cause hit rate</span><small>↗ 3.4%</small></div>
-              <div><strong>97.8%</strong><span>Tool success rate</span><small>↗ 1.2%</small></div>
-              <div><strong>81.6%</strong><span>Human acceptance</span><small>↗ 6.8%</small></div>
+              <div><strong>{(detectorQuality.precision * 100).toFixed(0)}%</strong><span>Detector precision</span><small>{detectorQuality.falsePositives} false positive</small></div>
+              <div><strong>{(detectorQuality.recall * 100).toFixed(0)}%</strong><span>Detector recall</span><small>{detectorQuality.truePositives}/3 found</small></div>
+              <div><strong>{(detectorQuality.f1 * 100).toFixed(0)}%</strong><span>Detector F1 score</span><small>Ground-truth suite</small></div>
               <div><strong>$0.00</strong><span>Cost per demo run</span><small className="down">No paid API</small></div>
             </div>
           </div>
