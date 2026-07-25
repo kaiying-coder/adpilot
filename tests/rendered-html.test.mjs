@@ -16,7 +16,10 @@ test("renders the AdPilot product shell", async () => {
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /AdPilot/);
-  assert.match(html, /MONETIZATION CONTROL CENTER/);
+  assert.match(html, /商业化控制中心/);
+  assert.match(html, /异常中心/);
+  assert.match(html, /知识库/);
+  assert.match(html, /评估中心/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/);
 });
 

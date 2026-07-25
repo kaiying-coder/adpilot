@@ -15,6 +15,8 @@ stage against a ground-truth suite.
 
 https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
 
+![AdPilot — AI advertising anomaly investigation](./public/og.png)
+
 The demo supports Chinese and English. Three seeded incidents are available:
 
 1. US mobile CTR decline after a landing-page latency regression.
@@ -84,6 +86,12 @@ require an API key or a paid model. See the complete
 | `POST /api/investigations/:id/approve` | Explicit simulated approval |
 | `GET /api/knowledge?q=latency` | Ranked knowledge hits with citations |
 | `GET /api/evaluations` | Detector, retrieval, agent, and cost metrics |
+
+Try the live read-only endpoints:
+
+- [US mobile metrics](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/metrics?market=US&device=Mobile)
+- [Detected anomalies](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/anomalies)
+- [Evaluation report](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/evaluations)
 
 ## Run locally
 
