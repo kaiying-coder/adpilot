@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: AdPilot API
+  version: 1.0.0
+  description: Free, deterministic API for the AdPilot portfolio demo.
+servers:
+  - url: https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
+paths:
+  /api/metrics:
+    get:
+      summary: Query campaign metrics
+      parameters:
+        - { name: market, in: query, schema: { type: string, enum: [All, US, DE, UK], default: All } }
+        - { name: device, in: query, schema: { type: string, enum: [All, Mobile, Desktop], default: All } }
+      responses:
+        "200":
+          description: Filtered rows, summary metrics, and a 14-day trend
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricsResponse" }
+  /api/anomalies:
+    get:
+      summary: List detected anomalies and detector quality
+      responses:
+        "200": { description: Three seeded incidents and precision/recall/F1 }
+  /api/investigations/{id}:
+    get:
+      summary: Read an investigation workflow and auditable tool trace
+      parameters:
+        - { $ref: "#/components/parameters/IncidentId" }
+      responses:
+        "200": { description: Investigation state machine and evidence }
+        "404": { description: Incident not found }
+  /api/investigations/{id}/approve:
+    post:
+      summary: Approve a simulated response action
+      description: No external advertising system is modified.
+      parameters:
+        - { $ref: "#/components/parameters/IncidentId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, const: approve }
+      responses:
+        "200": { description: Approval audit record and simulated execution }
+        "400": { description: Explicit approval was not supplied }
+        "404": { description: Incident not found }
+  /api/knowledge:
+    get:
+      summary: Search approved runbooks and historical cases
+      parameters:
+        - { name: q, in: query, schema: { type: string, example: latency } }
+      responses:
+        "200": { description: Ranked passages with document citations }
+  /api/evaluations:
+    get:
+      summary: Read detector, retrieval, agent, latency, and cost evaluations
+      responses:
+        "200": { description: Reproducible evaluation report }
+components:
+  parameters:
+    IncidentId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, enum: [INC-2407, INC-2411, INC-2414] }
+  schemas:
+    MetricsResponse:
+      type: object
+      required: [filters, rowCount, summary, trend, rows]
+      properties:
+        filters:
+          type: object
+          properties:
+            market: { type: string }
+            device: { type: string }
+        rowCount: { type: integer }
+        summary:
+          type: object
+          properties:
+            revenue: { type: number }
+            spend: { type: number }
+            ctr: { type: number }
+            cvr: { type: number }
+            roas: { type: number }
+        trend:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string }
+              value: { type: number }
+        rows:
+          type: array
+          items: { type: object }

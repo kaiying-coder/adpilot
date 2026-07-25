@@ -21,6 +21,21 @@ The demo supports Chinese and English. Three seeded incidents are available:
 2. DE desktop spend spike after an incorrect bid multiplier.
 3. UK mobile revenue decline after a conversion-tag change.
 
+## Why this project fits an AI engineering productivity role
+
+| Job signal | Evidence in AdPilot |
+| --- | --- |
+| AI coding and software engineering | Typed React/TypeScript product, six REST routes, automated tests |
+| Internal AI productivity tooling | Replaces manual alert triage, evidence collection, and incident reporting |
+| Product sense | Prioritized incident queue, explainable evidence, human approval, recovery monitoring |
+| Agent automation | Auditable state machine and five constrained analysis tools |
+| RAG | Approved runbooks and historical cases with ranked retrieval and citations |
+| Evaluation | Ground-truth anomaly suite, precision/recall/F1, tool success, latency, and cost |
+
+This is intentionally one coherent product rather than three unrelated demos:
+the knowledge base grounds the agent, the agent automates the investigation,
+and the evaluation center measures whether the automation is trustworthy.
+
 ## Product workflow
 
 ```mermaid
@@ -56,6 +71,10 @@ The browser normally reads through the API. A local deterministic fallback keeps
 the demo usable when an API request fails.
 
 ## API
+
+The API uses deterministic simulated data and is free to call. It does not
+require an API key or a paid model. See the complete
+[OpenAPI specification](./openapi.yaml).
 
 | Endpoint | Purpose |
 | --- | --- |
@@ -132,3 +151,7 @@ The suite verifies:
 - Durable multi-user incident history.
 - Optional bring-your-own-model adapter.
 - Real advertising connectors behind read-only permissions.
+
+## License
+
+[MIT](./LICENSE)
