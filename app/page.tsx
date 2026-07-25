@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   adMetrics,
   dailyRevenue,
@@ -13,6 +13,8 @@ import {
 import { investigateIncident } from "./agent";
 
 export default function Home() {
+  const [view, setView] = useState<"overview" | "incidents" | "runs" | "knowledge" | "evaluations">("overview");
+  const [language, setLanguage] = useState<"zh" | "en">("zh");
   const [selected, setSelected] = useState(0);
   const [approved, setApproved] = useState(false);
   const [query, setQuery] = useState("");
@@ -28,8 +30,9 @@ export default function Home() {
     ),
     [market, device]
   );
-  const summary = useMemo(() => summarize(filteredRows), [filteredRows]);
-  const trend = useMemo(() => dailyRevenue(filteredRows), [filteredRows]);
+  const [summary, setSummary] = useState(() => summarize(filteredRows));
+  const [trend, setTrend] = useState(() => dailyRevenue(filteredRows));
+  const [apiLive, setApiLive] = useState(false);
   const maxRevenue = Math.max(...trend.map((point) => point.value), 1);
   const detectorQuality = useMemo(() => evaluateDetector(detectedAnomalies), []);
   const toolResults = useMemo(() => investigateIncident(incident), [incident]);
@@ -45,6 +48,28 @@ export default function Home() {
     ["04", "Hypothesis verified", incident.evidence, "active"],
     ["05", "Action proposed", incident.action, "pending"],
   ];
+  const labels = language === "zh"
+    ? { overview: "总览", incidents: "异常中心", runs: "Agent运行", knowledge: "知识库", evaluations: "评估中心", hello: "晚上好，Yilin。", subtitle: "AdPilot 正在监控一套可复现的14天广告数据。", action: "＋ 新建调查" }
+    : { overview: "Overview", incidents: "Incidents", runs: "Agent runs", knowledge: "Knowledge", evaluations: "Evaluations", hello: "Good evening, Yilin.", subtitle: "AdPilot is monitoring a reproducible 14-day advertising dataset.", action: "＋ New investigation" };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/metrics?market=${market}&device=${device}`)
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((payload) => {
+        if (cancelled) return;
+        setSummary(payload.summary);
+        setTrend(payload.trend);
+        setApiLive(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSummary(summarize(filteredRows));
+        setTrend(dailyRevenue(filteredRows));
+        setApiLive(false);
+      });
+    return () => { cancelled = true; };
+  }, [market, device, filteredRows]);
 
   function askAgent() {
     if (!query.trim()) return;
@@ -59,11 +84,11 @@ export default function Home() {
       <aside className="sidebar">
         <div className="brand"><span className="brandMark">A</span><span>AdPilot</span></div>
         <nav>
-          <button className="navItem active"><span>⌁</span> Overview</button>
-          <button className="navItem"><span>⌕</span> Incidents <b>3</b></button>
-          <button className="navItem"><span>✣</span> Agent runs</button>
-          <button className="navItem"><span>▤</span> Knowledge</button>
-          <button className="navItem"><span>◫</span> Evaluations</button>
+          <button onClick={() => setView("overview")} className={`navItem ${view === "overview" ? "active" : ""}`}><span>⌁</span> {labels.overview}</button>
+          <button onClick={() => setView("incidents")} className={`navItem ${view === "incidents" ? "active" : ""}`}><span>⌕</span> {labels.incidents} <b>3</b></button>
+          <button onClick={() => setView("runs")} className={`navItem ${view === "runs" ? "active" : ""}`}><span>✣</span> {labels.runs}</button>
+          <button onClick={() => setView("knowledge")} className={`navItem ${view === "knowledge" ? "active" : ""}`}><span>▤</span> {labels.knowledge}</button>
+          <button onClick={() => setView("evaluations")} className={`navItem ${view === "evaluations" ? "active" : ""}`}><span>◫</span> {labels.evaluations}</button>
         </nav>
         <div className="sideBottom">
           <div className="system"><i /> All systems operational</div>
@@ -73,12 +98,13 @@ export default function Home() {
 
       <section className="workspace">
         <header>
-          <div><p className="eyebrow">MONETIZATION CONTROL CENTER</p><h1>Good evening, Yilin.</h1><p>AdPilot is monitoring a reproducible 14-day advertising dataset.</p></div>
-          <div className="headerActions"><button className="iconButton">?</button><button className="iconButton">♟</button><button className="primary">＋ New investigation</button></div>
+          <div><p className="eyebrow">MONETIZATION CONTROL CENTER</p><h1>{labels.hello}</h1><p>{labels.subtitle}</p></div>
+          <div className="headerActions"><button onClick={() => setLanguage(language === "zh" ? "en" : "zh")} className="languageButton">{language === "zh" ? "EN" : "中文"}</button><button className="primary">{labels.action}</button></div>
         </header>
 
+        {view === "overview" ? <>
         <section className="filterBar" aria-label="Dashboard filters">
-          <div><strong>Data scope</strong><span>All dashboard values update from the same underlying dataset.</span></div>
+          <div><strong>{language === "zh" ? "数据范围" : "Data scope"}</strong><span>{language === "zh" ? "整页指标通过 AdPilot API 实时更新。" : "All dashboard values update through the AdPilot API."}</span></div>
           <label>Market
             <select value={market} onChange={(event) => setMarket(event.target.value as Market | "All")}>
               <option>All</option><option>US</option><option>DE</option><option>UK</option>
@@ -89,7 +115,7 @@ export default function Home() {
               <option>All</option><option>Mobile</option><option>Desktop</option>
             </select>
           </label>
-          <span className="datasetBadge">SIMULATED · REPRODUCIBLE</span>
+          <span className="datasetBadge">{apiLive ? "API LIVE" : "LOCAL FALLBACK"} · $0</span>
         </section>
 
         <section className="metrics">
@@ -170,7 +196,68 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </> : <ModuleView view={view} language={language} setView={setView} />}
       </section>
     </main>
+  );
+}
+
+function ModuleView({
+  view,
+  language,
+  setView,
+}: {
+  view: "incidents" | "runs" | "knowledge" | "evaluations";
+  language: "zh" | "en";
+  setView: (view: "overview" | "incidents" | "runs" | "knowledge" | "evaluations") => void;
+}) {
+  const titles = language === "zh"
+    ? { incidents: "异常中心", runs: "Agent运行记录", knowledge: "知识库", evaluations: "评估中心" }
+    : { incidents: "Incident center", runs: "Agent runs", knowledge: "Knowledge base", evaluations: "Evaluations" };
+  const quality = evaluateDetector(detectedAnomalies);
+
+  return (
+    <section className="modulePage">
+      <div className="moduleHero">
+        <div><p className="eyebrow">ADPILOT WORKSPACE</p><h2>{titles[view]}</h2><p>{language === "zh" ? "使用同一套模拟数据、真实API和标准答案测试集。" : "Powered by the same simulated data, real APIs, and ground-truth suite."}</p></div>
+        <span>● API LIVE · $0</span>
+      </div>
+
+      {view === "incidents" && <div className="moduleGrid">
+        {detectedAnomalies.map((item) => (
+          <button className="moduleCard" key={item.id} onClick={() => setView("overview")}>
+            <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
+            <div><strong>{item.title}</strong><p>{item.evidence}</p><small>{item.id} · {item.status}</small></div>
+            <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em>
+          </button>
+        ))}
+      </div>}
+
+      {view === "runs" && <div className="tracePage">
+        {detectedAnomalies.map((item) => (
+          <article key={item.id}>
+            <div><span className="liveDot">TRACE</span><strong>{item.id} · {item.title}</strong><small>{item.status}</small></div>
+            {investigateIncident(item).map((tool) => <p key={tool.tool}><code>{tool.tool}</code><span>{tool.result}</span><em>✓</em></p>)}
+          </article>
+        ))}
+      </div>}
+
+      {view === "knowledge" && <div className="knowledgeGrid">
+        {[
+          ["RB-014", "CTR下降排查手册 / CTR decline runbook", "CTR · latency · creative"],
+          ["RB-021", "花费异常排查手册 / Spend spike runbook", "Spend · bid · budget"],
+          ["RB-008", "收入下降排查手册 / Revenue decline runbook", "Revenue · tracking · CVR"],
+          ["INC-2319", "移动端延迟历史案例 / Mobile latency case", "Historical case · verified"],
+        ].map((doc) => <article key={doc[0]}><span>APPROVED</span><strong>{doc[1]}</strong><p>{doc[2]}</p><small>{doc[0]} · GET /api/knowledge</small></article>)}
+      </div>}
+
+      {view === "evaluations" && <div className="evaluationPage">
+        <article><strong>{(quality.precision * 100).toFixed(0)}%</strong><span>Precision / 精确率</span></article>
+        <article><strong>{(quality.recall * 100).toFixed(0)}%</strong><span>Recall / 召回率</span></article>
+        <article><strong>{(quality.f1 * 100).toFixed(0)}%</strong><span>F1 score</span></article>
+        <article><strong>$0.00</strong><span>Demo API cost / 演示成本</span></article>
+        <div><h3>Ground-truth suite</h3><p>3 standard incidents · 3 detected · 0 false positives</p><code>GET /api/anomalies</code></div>
+      </div>}
+    </section>
   );
 }
