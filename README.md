@@ -2,6 +2,10 @@
 
 **AI-powered advertising anomaly analysis and automated response platform.**
 
+[![CI](https://github.com/kaiying-coder/adpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/kaiying-coder/adpilot/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Open-1a6b52)](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site)
+[![License: MIT](https://img.shields.io/badge/License-MIT-d9f564.svg)](./LICENSE)
+
 AdPilot is a portfolio-grade internal productivity tool inspired by advertising
 monetization workflows. It detects anomalies in a reproducible campaign dataset,
 investigates them with a tool-using agent, retrieves approved runbooks and
@@ -105,7 +109,7 @@ Try the live read-only endpoints:
 Requirements: Node.js 22+ and either npm or pnpm.
 
 ```bash
-git clone <your-github-repository-url>
+git clone https://github.com/kaiying-coder/adpilot.git
 cd adpilot
 npm run demo
 ```
