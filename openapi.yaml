@@ -68,7 +68,7 @@ components:
       name: id
       in: path
       required: true
-      schema: { type: string, enum: [INC-2407, INC-2411, INC-2414] }
+      schema: { type: string, enum: [INC-2407, INC-2406, INC-2405] }
   schemas:
     MetricsResponse:
       type: object

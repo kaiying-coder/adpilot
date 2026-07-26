@@ -69,8 +69,8 @@ def incidents():
     image, draw = base(1, "Prioritize three standard incidents", "Impact, severity, market, device, and evidence stay visible in one queue.")
     cards = [
         ("P1", "US mobile CTR decline", "INC-2407 · Landing-page latency regression", "-17.8%", "$18,400/day"),
-        ("P1", "DE desktop spend spike", "INC-2411 · Incorrect bid multiplier", "+34.2%", "$12,900/day"),
-        ("P2", "UK mobile revenue decline", "INC-2414 · Conversion-tag change", "-21.4%", "$9,600/day"),
+        ("P1", "DE desktop spend spike", "INC-2406 · Incorrect bid multiplier", "+34.2%", "$12,900/day"),
+        ("P2", "UK mobile revenue decline", "INC-2405 · Conversion-tag change", "-21.4%", "$9,600/day"),
     ]
     for i, (sev, title, detail, delta, impact) in enumerate(cards):
         y = 155 + i * 142
