@@ -4,7 +4,15 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AdPilot — AI Monetization Operations",
   description: "AI-powered advertising anomaly analysis and automated resolution.",
-  metadataBase: new URL("https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site"),
+  metadataBase: new URL("https://adpilot-ai-ops.pages.dev"),
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+    },
+  },
   openGraph: {
     title: "AdPilot",
     description: "AI Advertising Anomaly Investigation",
