@@ -45,7 +45,23 @@ test("renders the AdPilot product shell", async () => {
   assert.match(html, /异常中心/);
   assert.match(html, /知识库/);
   assert.match(html, /评估中心/);
+  assert.match(html, /No LLM hypothesis exists before execution/);
+  assert.doesNotMatch(html, /CTR shifted 3\.7σ|latency rose 920ms/);
+  assert.doesNotMatch(html, /Rollback release v3\.18\.4/);
+  assert.doesNotMatch(html, /Live LLM decision \+ tool trace/);
   assert.doesNotMatch(html, /Your site is taking shape|codex-preview/);
+});
+
+test("live incident GET exposes detector state but no scripted conclusion", async () => {
+  const response = await request("/api/investigations/INC-2407");
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status, "ready_to_run");
+  assert.deepEqual(body.trace, []);
+  assert.equal(body.conclusion, null);
+  assert.equal(body.incident.cause, undefined);
+  assert.equal(body.incident.action, undefined);
+  assert.equal(body.incident.evidence, undefined);
 });
 
 test("metrics API filters the simulated dataset", async () => {

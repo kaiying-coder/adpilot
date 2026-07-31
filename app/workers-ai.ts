@@ -75,7 +75,7 @@ Available read-only tools:
 
 Use each available tool exactly once. Choose the metric dimensions, search query, and order.
 Respond in this shape:
-{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR latency rollback"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
+{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR anomaly investigation"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
 Every tool value must exactly match one available tool.
 ${correction ? `Correction from the previous attempt: ${correction}` : ""}
 `.trim();
@@ -150,7 +150,7 @@ export async function runWorkersAIInvestigation(
         args: tool === "query_metrics"
           ? { market: incident.market, device: incident.device, window: 14 }
           : tool === "search_runbook"
-            ? { query: `${incident.metric} ${incident.cause} rollback` }
+            ? { query: `${incident.metric} anomaly ${incident.market} ${incident.device}` }
             : {},
         rationale: "Required evidence check added by the investigation policy.",
       });
