@@ -3,7 +3,7 @@
 **AI-powered advertising anomaly analysis and automated response platform.**
 
 [![CI](https://github.com/kaiying-coder/adpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/kaiying-coder/adpilot/actions/workflows/ci.yml)
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Open-1a6b52)](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Open-1a6b52)](https://adpilot-ai-ops.kaiying-coder.workers.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-d9f564.svg)](./LICENSE)
 
 AdPilot is a portfolio-grade internal productivity tool inspired by advertising
@@ -17,7 +17,7 @@ stage against a ground-truth suite.
 
 ## Live demo
 
-https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
+https://adpilot-ai-ops.kaiying-coder.workers.dev
 
 ![AdPilot — AI advertising anomaly investigation](./public/og.png)
 
@@ -100,9 +100,9 @@ require an API key or a paid model. See the complete
 
 Try the live read-only endpoints:
 
-- [US mobile metrics](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/metrics?market=US&device=Mobile)
-- [Detected anomalies](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/anomalies)
-- [Evaluation report](https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site/api/evaluations)
+- [US mobile metrics](https://adpilot-ai-ops.kaiying-coder.workers.dev/api/metrics?market=US&device=Mobile)
+- [Detected anomalies](https://adpilot-ai-ops.kaiying-coder.workers.dev/api/anomalies)
+- [Evaluation report](https://adpilot-ai-ops.kaiying-coder.workers.dev/api/evaluations)
 
 ## Run locally
 

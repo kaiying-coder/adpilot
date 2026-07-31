@@ -4,7 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "AdPilot — AI Monetization Operations",
   description: "AI-powered advertising anomaly analysis and automated resolution.",
-  metadataBase: new URL("https://adpilot-ai-ops.pages.dev"),
+  metadataBase: new URL("https://adpilot-ai-ops.kaiying-coder.workers.dev"),
   robots: {
     index: true,
     follow: true,

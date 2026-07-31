@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: Free, deterministic API for the AdPilot portfolio demo.
 servers:
-  - url: https://adpilot-ai-ops.b-ryceboyd30668.chatgpt.site
+  - url: https://adpilot-ai-ops.kaiying-coder.workers.dev
 paths:
   /api/metrics:
     get:
