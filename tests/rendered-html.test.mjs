@@ -36,6 +36,10 @@ function request(path, init) {
   return worker.fetch(new Request(`http://localhost${path}`, init), env, context);
 }
 
+function requestWithEnv(path, init, requestEnv) {
+  return worker.fetch(new Request(`http://localhost${path}`, init), requestEnv, context);
+}
+
 test("renders the AdPilot product shell", async () => {
   const response = await request("/");
   assert.equal(response.status, 200);
@@ -113,6 +117,27 @@ test("INC-2407 runs a live Workers AI tool loop", async () => {
   ]);
   assert.equal(body.conclusion.confidence, 0.91);
   assert.match(body.guardrail, /approval/i);
+});
+
+test("AI outage returns a safe, retryable error for graceful degradation", async () => {
+  const failingEnv = {
+    ...env,
+    AI: {
+      run: async () => {
+        throw new Error("upstream socket and account details must stay private");
+      },
+    },
+  };
+  const response = await requestWithEnv(
+    "/api/investigations/INC-2407/run",
+    { method: "POST" },
+    failingEnv,
+  );
+  assert.equal(response.status, 502);
+  const body = await response.json();
+  assert.equal(body.errorCode, "AI_UPSTREAM_ERROR");
+  assert.equal(body.retryable, true);
+  assert.doesNotMatch(JSON.stringify(body), /socket|account details/i);
 });
 
 test("knowledge API returns ranked citations", async () => {
