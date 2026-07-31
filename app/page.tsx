@@ -27,6 +27,7 @@ export default function Home() {
   const [device, setDevice] = useState<Device | "All">("All");
   const [liveRunStatus, setLiveRunStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [liveRunError, setLiveRunError] = useState("");
+  const [liveRunSlow, setLiveRunSlow] = useState(false);
   const [liveRun, setLiveRun] = useState<{
     model: string;
     trace: Array<{
@@ -68,23 +69,39 @@ export default function Home() {
   const [apiLive, setApiLive] = useState(false);
   const maxRevenue = Math.max(...trend.map((point) => point.value), 1);
   const replay = useMemo(() => replaySummary(detectedAnomalies), []);
-  const toolResults = useMemo(() => investigateIncident(incident), [incident]);
-  const displayedToolResults = liveRun && incident.id === "INC-2407"
-    ? liveRun.trace.map((item) => item.observation)
+  const isLiveIncident = incident.id === "INC-2407";
+  const toolResults = useMemo(
+    () => incident.id === "INC-2407" ? [] : investigateIncident(incident),
+    [incident]
+  );
+  const displayedToolResults = isLiveIncident
+    ? (liveRun?.trace.map((item) => item.observation) ?? [])
     : toolResults;
   const visibleAnomalies = detectedAnomalies.filter((item) =>
     (market === "All" || item.market === market) &&
     (device === "All" || item.device === device)
   );
-  const progress = useMemo(() => (approved ? 100 : selected === 2 ? 100 : 68), [approved, selected]);
+  const progress = approved
+    ? 100
+    : isLiveIncident
+      ? liveRun ? 88 : liveRunStatus === "running" ? 42 : 20
+      : selected === 2 ? 100 : 68;
   const revenueProtected = visibleAnomalies.reduce((sum, item) => sum + item.estimatedImpact, 0);
-  const steps = [
-    ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its expected baseline.`, "done"],
-    ["02", "Dimensions investigated", `Impact narrowed to ${incident.market} · ${incident.device} traffic.`, "done"],
-    ["03", "Knowledge retrieved", "Matched the relevant runbook and two historical incidents.", "done"],
-    ["04", "Hypothesis verified", incident.evidence, "active"],
-    ["05", "Action proposed", incident.action, "pending"],
-  ];
+  const steps = isLiveIncident
+    ? [
+        ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its statistical baseline.`, "done"],
+        ["02", "Investigation planned", liveRun ? `${liveRun.trace.length} read-only tools selected and executed by the live investigation.` : liveRunStatus === "running" ? "Workers AI is selecting evidence tools now." : liveRunStatus === "error" ? "Model investigation interrupted; detector output preserved." : "Not started — run the live AI investigation to create a plan.", liveRun ? "done" : liveRunStatus === "running" ? "active" : liveRunStatus === "error" ? "done" : "pending"],
+        ["03", "Evidence observed", liveRun ? `${liveRun.trace.length}/${liveRun.trace.length} tool observations returned from the 14-day dataset and approved knowledge.` : liveRunStatus === "error" ? "No incomplete model observation was accepted as evidence." : "No tool observations yet.", liveRun ? "done" : liveRunStatus === "error" ? "done" : "pending"],
+        ["04", "Hypothesis generated", liveRun?.conclusion.hypothesis ?? (liveRunStatus === "error" ? "Detector-only fallback: anomaly confirmed, root cause unverified." : "No LLM hypothesis exists before execution."), liveRun ? "done" : liveRunStatus === "error" ? "active" : "pending"],
+        ["05", "Action proposed", liveRun?.conclusion.recommendedAction ?? (liveRunStatus === "error" ? "Escalate to a human analyst; do not execute an automated action." : "No action has been proposed."), liveRun ? "active" : "pending"],
+      ]
+    : [
+        ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its expected baseline.`, "done"],
+        ["02", "Dimensions investigated", `Impact narrowed to ${incident.market} · ${incident.device} traffic.`, "done"],
+        ["03", "Knowledge retrieved", "Matched the relevant runbook and two historical incidents.", "done"],
+        ["04", "Hypothesis verified", incident.evidence, "active"],
+        ["05", "Action proposed", incident.action, "pending"],
+      ];
   const labels = language === "zh"
     ? {
         overview: "总览", incidents: "异常中心", runs: "Agent 运行", knowledge: "知识库", evaluations: "评估中心",
@@ -155,9 +172,16 @@ export default function Home() {
     setLiveRunStatus("running");
     setLiveRun(null);
     setLiveRunError("");
+    setLiveRunSlow(false);
     setShowEvidence(true);
+    const controller = new AbortController();
+    const slowTimer = window.setTimeout(() => setLiveRunSlow(true), 8000);
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
     try {
-      const response = await fetch("/api/investigations/INC-2407/run", { method: "POST" });
+      const response = await fetch("/api/investigations/INC-2407/run", {
+        method: "POST",
+        signal: controller.signal,
+      });
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.errorCode ?? payload?.error ?? "AI_UPSTREAM_ERROR");
@@ -165,8 +189,16 @@ export default function Home() {
       setLiveRun(await response.json());
       setLiveRunStatus("done");
     } catch (error) {
-      setLiveRunError(error instanceof Error ? error.message : "Unknown Workers AI error");
+      setLiveRunError(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "AI_TIMEOUT"
+          : error instanceof Error ? error.message : "AI_UPSTREAM_ERROR"
+      );
       setLiveRunStatus("error");
+    } finally {
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(timeout);
+      setLiveRunSlow(false);
     }
   }
 
@@ -276,16 +308,30 @@ export default function Home() {
               ) : <span className="elapsed">14-DAY REPLAY</span>}
             </div>
             <div className="progress"><i style={{ width: `${progress}%` }} /></div>
+            {liveRunStatus === "running" && (
+              <div className="liveProgress" role="status" aria-live="polite">
+                <span className="progressPulse">✦</span>
+                <div>
+                  <strong>{liveRunSlow ? (language === "zh" ? "调查仍在运行" : "Investigation is still running") : (language === "zh" ? "Workers AI 正在调查" : "Workers AI is investigating")}</strong>
+                  <p>{liveRunSlow ? (language === "zh" ? "免费模型可能正在冷启动；已保留检测结果，可安全等待。" : "The free model may be cold-starting. Detector evidence is preserved and it is safe to wait.") : (language === "zh" ? "制定计划 → 查询指标 → 检索知识 → 生成结论" : "Plan → query metrics → retrieve knowledge → conclude")}</p>
+                </div>
+                <small>{liveRunSlow ? "8s+" : "LIVE"}</small>
+              </div>
+            )}
             <div className="timeline">
               {steps.map(([n, title, copy, state]) => (
                 <div className={`step ${approved ? "done" : state}`} key={n}><span>{approved || state === "done" ? "✓" : n}</span><div><strong>{title}</strong><p>{copy}</p></div>{state === "active" && !approved && <i>Analyzing</i>}</div>
               ))}
             </div>
-            <div className={`approval ${approved ? "approved" : ""}`}>
-              <div><span>{approved ? "✓" : "!"}</span><div><strong>{approved ? (language === "zh" ? "操作已批准" : "Action approved") : labels.approval}</strong><p>{approved ? (language === "zh" ? "模拟操作已排队，恢复监控窗口已启动。" : "Simulated action queued. Monitoring window started.") : `${incident.action}. ${language === "zh" ? "预计恢复" : "Estimated recovery"}: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
-              {!approved && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? (language === "zh" ? "保存中…" : "Saving…") : labels.approve}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? labels.hideEvidence : labels.evidence}</button></div>}
+            <div className={`approval ${approved ? "approved" : ""} ${isLiveIncident && !liveRun ? "locked" : ""}`}>
+              <div><span>{approved ? "✓" : isLiveIncident && !liveRun ? liveRunStatus === "error" ? "↑" : "○" : "!"}</span><div><strong>{approved ? (language === "zh" ? "操作已批准" : "Action approved") : isLiveIncident && !liveRun ? liveRunStatus === "error" ? (language === "zh" ? "已升级人工调查" : "Escalated to human investigation") : (language === "zh" ? "等待真实调查结果" : "Awaiting live investigation") : labels.approval}</strong><p>{approved ? (language === "zh" ? "模拟操作已排队，恢复监控窗口已启动。" : "Simulated action queued. Monitoring window started.") : isLiveIncident && !liveRun ? liveRunStatus === "error" ? (language === "zh" ? "统计异常仍然有效，但根因未经模型验证；审批和自动处置保持锁定。" : "The statistical anomaly remains valid, but the root cause is unverified. Approval and automated execution remain locked.") : (language === "zh" ? "运行前没有根因结论或处置动作；高风险操作入口保持锁定。" : "No root-cause conclusion or action exists before the run; high-risk execution stays locked.") : `${liveRun?.conclusion.recommendedAction ?? incident.action}. ${language === "zh" ? "预计恢复" : "Estimated recovery"}: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
+              {!approved && (!isLiveIncident || liveRun) && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? (language === "zh" ? "保存中…" : "Saving…") : labels.approve}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? labels.hideEvidence : labels.evidence}</button></div>}
             </div>
-            {liveRunStatus === "error" && <div className="runError"><strong>{language === "zh" ? "Workers AI 本次请求未完成" : "Workers AI request did not complete"}</strong><span>{liveRunError}</span></div>}
+            {liveRunStatus === "error" && <div className="degradedResult" role="status">
+              <div><strong>{language === "zh" ? "降级结论 · 仅检测器" : "Degraded result · detector only"}</strong><span>35% confidence</span></div>
+              <p>{language === "zh" ? "统计异常已确认；LLM 调查未完成，根因未知。" : "Statistical anomaly confirmed; LLM investigation incomplete and root cause unknown."}</p>
+              <small>{language === "zh" ? "建议：升级人工分析，不执行自动处置。" : "Recommendation: escalate to a human analyst; execute no automated action."} · {liveRunError}</small>
+            </div>}
             {liveRun && incident.id === "INC-2407" && (
               <div className="llmConclusion">
                 <div><strong>{language === "zh" ? "LLM 结论" : "LLM conclusion"}</strong><span>{Math.round(liveRun.conclusion.confidence * 100)}% confidence</span></div>
@@ -293,7 +339,7 @@ export default function Home() {
                 <small>{liveRun.conclusion.recommendedAction} · {liveRun.model}</small>
               </div>
             )}
-            {showEvidence && (
+            {showEvidence && displayedToolResults.length > 0 && (
               <div className="evidenceDrawer">
                 <div className="evidenceTitle"><strong>{liveRun ? "Live LLM decision + tool trace" : "Replay tool trace"}</strong><span>{displayedToolResults.length}/{displayedToolResults.length} tools succeeded</span></div>
                 {displayedToolResults.map((result, index) => (
@@ -418,7 +464,9 @@ function ModuleView({
         {detectedAnomalies.map((item) => (
           <article key={item.id}>
             <div><span className="liveDot">TRACE</span><strong>{item.id} · {item.title}</strong><small>{item.status}</small></div>
-            {investigateIncident(item).map((tool) => <p key={tool.tool}><code>{tool.tool}</code><span>{tool.result}</span><em>✓</em></p>)}
+            {item.id === "INC-2407"
+              ? <p><code>live_only</code><span>{language === "zh" ? "该事件的 trace 不预置；请从总览运行真实 AI 调查后查看。" : "No trace is preloaded. Run the live AI investigation from Overview to generate it."}</span><em>○</em></p>
+              : investigateIncident(item).map((tool) => <p key={tool.tool}><code>{tool.tool}</code><span>{tool.result}</span><em>✓</em></p>)}
           </article>
         ))}
       </div>}

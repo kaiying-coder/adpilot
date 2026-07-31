@@ -75,7 +75,7 @@ Available read-only tools:
 
 Use each available tool exactly once. Choose the metric dimensions, search query, and order.
 Respond in this shape:
-{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR latency rollback"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
+{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR anomaly investigation"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
 Every tool value must exactly match one available tool.
 ${correction ? `Correction from the previous attempt: ${correction}` : ""}
 `.trim();
@@ -105,17 +105,22 @@ export async function runWorkersAIInvestigation(
   const trace: LiveAgentTrace[] = [];
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   const callModel = async (prompt: string) => {
-    const result = await ai.run(MODEL, {
-      messages: [
-        {
-          role: "system",
-          content: "You are a precise AI operations agent. Follow the requested JSON contract.",
-        },
-        { role: "user", content: prompt },
-      ],
-      max_tokens: 640,
-      temperature: 0.1,
-    }) as WorkersAIResponse;
+    let result: WorkersAIResponse;
+    try {
+      result = await ai.run(MODEL, {
+        messages: [
+          {
+            role: "system",
+            content: "You are a precise AI operations agent. Follow the requested JSON contract.",
+          },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 640,
+        temperature: 0.1,
+      }) as WorkersAIResponse;
+    } catch {
+      throw new Error("Workers AI upstream request failed.");
+    }
     usage = {
       promptTokens: usage.promptTokens + (result.usage?.prompt_tokens ?? 0),
       completionTokens: usage.completionTokens + (result.usage?.completion_tokens ?? 0),
@@ -136,7 +141,8 @@ export async function runWorkersAIInvestigation(
         seen.add(item.tool);
         return true;
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("upstream request failed")) throw error;
       plan = [];
     }
     correction = "Return a plan array using each of the three exact tool names once.";
@@ -150,7 +156,7 @@ export async function runWorkersAIInvestigation(
         args: tool === "query_metrics"
           ? { market: incident.market, device: incident.device, window: 14 }
           : tool === "search_runbook"
-            ? { query: `${incident.metric} ${incident.cause} rollback` }
+            ? { query: `${incident.metric} anomaly ${incident.market} ${incident.device}` }
             : {},
         rationale: "Required evidence check added by the investigation policy.",
       });
@@ -198,7 +204,8 @@ export async function runWorkersAIInvestigation(
         },
         guardrail: "Recommendation only; execution requires explicit human approval.",
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("upstream request failed")) throw error;
       correction = "Return the complete conclusion as one plain JSON object with every requested field.";
     }
   }

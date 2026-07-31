@@ -69,7 +69,7 @@ export function executeAgentTool(
   }
 
   if (request.tool === "search_runbook") {
-    const query = request.args?.query ?? `${incident.metric} ${incident.cause}`;
+    const query = request.args?.query ?? `${incident.metric} anomaly ${incident.market} ${incident.device}`;
     const hits = searchKnowledge(query, 3);
     return {
       tool: request.tool,
@@ -85,7 +85,10 @@ export function executeAgentTool(
       item.metric === incident.metric || item.device === incident.device
     ))
     .slice(0, 2);
-  const historicalCase = searchKnowledge("mobile latency release ctr case", 1)[0];
+  const historicalCase = searchKnowledge(
+    `${incident.metric} ${incident.device} historical incident`,
+    1
+  )[0];
   return {
     tool: request.tool,
     purpose: request.rationale ?? "Compare with prior incidents before proposing a high-risk action",
