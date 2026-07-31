@@ -87,25 +87,42 @@ export default function Home() {
       ? liveRun ? 88 : liveRunStatus === "running" ? 42 : 20
       : selected === 2 ? 100 : 68;
   const revenueProtected = visibleAnomalies.reduce((sum, item) => sum + item.estimatedImpact, 0);
+  const uiCopy = language === "zh"
+    ? {
+        anomalyDetected: "检测到异常",
+        investigationPlanned: "制定调查计划",
+        evidenceObserved: "获取真实证据",
+        hypothesisGenerated: "生成根因假设",
+        actionProposed: "提出处置建议",
+        analyzing: "分析中",
+      }
+    : {
+        anomalyDetected: "Anomaly detected",
+        investigationPlanned: "Investigation planned",
+        evidenceObserved: "Evidence observed",
+        hypothesisGenerated: "Hypothesis generated",
+        actionProposed: "Action proposed",
+        analyzing: "Analyzing",
+      };
   const steps = isLiveIncident
     ? [
-        ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its statistical baseline.`, "done"],
-        ["02", "Investigation planned", liveRun ? `${liveRun.trace.length} read-only tools selected and executed by the live investigation.` : liveRunStatus === "running" ? "Workers AI is selecting evidence tools now." : liveRunStatus === "error" ? "Model investigation interrupted; detector output preserved." : "Not started — run the live AI investigation to create a plan.", liveRun ? "done" : liveRunStatus === "running" ? "active" : liveRunStatus === "error" ? "done" : "pending"],
-        ["03", "Evidence observed", liveRun ? `${liveRun.trace.length}/${liveRun.trace.length} tool observations returned from the 14-day dataset and approved knowledge.` : liveRunStatus === "error" ? "No incomplete model observation was accepted as evidence." : "No tool observations yet.", liveRun ? "done" : liveRunStatus === "error" ? "done" : "pending"],
-        ["04", "Hypothesis generated", liveRun?.conclusion.hypothesis ?? (liveRunStatus === "error" ? "Detector-only fallback: anomaly confirmed, root cause unverified." : "No LLM hypothesis exists before execution."), liveRun ? "done" : liveRunStatus === "error" ? "active" : "pending"],
-        ["05", "Action proposed", liveRun?.conclusion.recommendedAction ?? (liveRunStatus === "error" ? "Escalate to a human analyst; do not execute an automated action." : "No action has been proposed."), liveRun ? "active" : "pending"],
+        ["01", uiCopy.anomalyDetected, language === "zh" ? `${incident.metric} 相对统计基线变化 ${Math.abs(incident.delta)}%。` : `${incident.metric} moved ${Math.abs(incident.delta)}% from its statistical baseline.`, "done"],
+        ["02", uiCopy.investigationPlanned, liveRun ? (language === "zh" ? `真实调查已选择并执行 ${liveRun.trace.length} 个只读工具。` : `${liveRun.trace.length} read-only tools selected and executed by the live investigation.`) : liveRunStatus === "running" ? (language === "zh" ? "Workers AI 正在选择证据工具。" : "Workers AI is selecting evidence tools now.") : liveRunStatus === "error" ? (language === "zh" ? "模型调查中断；检测器结果已保留。" : "Model investigation interrupted; detector output preserved.") : (language === "zh" ? "尚未开始——运行真实 AI 调查后生成计划。" : "Not started — run the live AI investigation to create a plan."), liveRun ? "done" : liveRunStatus === "running" ? "active" : liveRunStatus === "error" ? "done" : "pending"],
+        ["03", uiCopy.evidenceObserved, liveRun ? (language === "zh" ? `${liveRun.trace.length}/${liveRun.trace.length} 个工具已从 14 天数据和已批准知识中返回观测。` : `${liveRun.trace.length}/${liveRun.trace.length} tool observations returned from the 14-day dataset and approved knowledge.`) : liveRunStatus === "error" ? (language === "zh" ? "未将不完整的模型观测作为证据。" : "No incomplete model observation was accepted as evidence.") : (language === "zh" ? "暂无工具观测。" : "No tool observations yet."), liveRun ? "done" : liveRunStatus === "error" ? "done" : "pending"],
+        ["04", uiCopy.hypothesisGenerated, liveRun?.conclusion.hypothesis ?? (liveRunStatus === "error" ? (language === "zh" ? "仅检测器降级：异常已确认，根因未经验证。" : "Detector-only fallback: anomaly confirmed, root cause unverified.") : (language === "zh" ? "运行前不存在 LLM 根因假设。" : "No LLM hypothesis exists before execution.")), liveRun ? "done" : liveRunStatus === "error" ? "active" : "pending"],
+        ["05", uiCopy.actionProposed, liveRun?.conclusion.recommendedAction ?? (liveRunStatus === "error" ? (language === "zh" ? "升级人工分析；不执行自动处置。" : "Escalate to a human analyst; do not execute an automated action.") : (language === "zh" ? "尚未提出处置建议。" : "No action has been proposed.")), liveRun ? "active" : "pending"],
       ]
     : [
-        ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its expected baseline.`, "done"],
-        ["02", "Dimensions investigated", `Impact narrowed to ${incident.market} · ${incident.device} traffic.`, "done"],
-        ["03", "Knowledge retrieved", "Matched the relevant runbook and two historical incidents.", "done"],
-        ["04", "Hypothesis verified", incident.evidence, "active"],
-        ["05", "Action proposed", incident.action, "pending"],
+        ["01", uiCopy.anomalyDetected, language === "zh" ? `${incident.metric} 相对预期基线变化 ${Math.abs(incident.delta)}%。` : `${incident.metric} moved ${Math.abs(incident.delta)}% from its expected baseline.`, "done"],
+        ["02", language === "zh" ? "分析影响维度" : "Dimensions investigated", language === "zh" ? `影响范围已缩小至 ${incident.market} · ${incident.device} 流量。` : `Impact narrowed to ${incident.market} · ${incident.device} traffic.`, "done"],
+        ["03", language === "zh" ? "检索业务知识" : "Knowledge retrieved", language === "zh" ? "已匹配相关运行手册和两个历史事件。" : "Matched the relevant runbook and two historical incidents.", "done"],
+        ["04", language === "zh" ? "验证根因假设" : "Hypothesis verified", incident.evidence, "active"],
+        ["05", uiCopy.actionProposed, incident.action, "pending"],
       ];
   const labels = language === "zh"
     ? {
         overview: "总览", incidents: "异常中心", runs: "Agent 运行", knowledge: "知识库", evaluations: "评估中心",
-        hello: "晚上好，Yilin。", subtitle: "AdPilot 正在回放 14 天广告数据，并用真实 LLM 调查 INC-2407。", action: "＋ 新建调查",
+        hello: "AdPilot 演示工作区", subtitle: "14 天广告数据回放 · INC-2407 使用真实 LLM 和工具调用。", action: "开始 30 秒演示",
         controlCenter: "商业化控制中心", systems: "所有系统运行正常", scope: "数据范围",
         scopeHint: "整页指标由筛选条件驱动，对 14 天数据重新计算。", revenue: "收入", anomaly: "检测异常",
         ctrCvr: "点击率 / 转化率", roas: "广告投入回报率", trend: "收入趋势",
@@ -115,7 +132,7 @@ export default function Home() {
       }
     : {
         overview: "Overview", incidents: "Incidents", runs: "Agent runs", knowledge: "Knowledge", evaluations: "Evaluations",
-        hello: "Good evening, Yilin.", subtitle: "AdPilot replays 14 days of ad data and investigates INC-2407 with a real LLM.", action: "＋ New investigation",
+        hello: "AdPilot demo workspace", subtitle: "14-day ad data replay · INC-2407 uses a real LLM and tool calls.", action: "Start 30-second demo",
         controlCenter: "MONETIZATION CONTROL CENTER", systems: "All systems operational", scope: "Data scope",
         scopeHint: "All dashboard values update through the AdPilot API.", revenue: "Revenue", anomaly: "Detected anomalies",
         ctrCvr: "CTR / CVR", roas: "Return on ad spend", trend: "Revenue trend",
@@ -123,6 +140,10 @@ export default function Home() {
         approval: "Human approval required", approve: "Approve action", evidence: "Review evidence", hideEvidence: "Hide evidence",
         ask: "Ask your monetization data", askHint: "Answers grounded in replay metrics and approved knowledge", quality: "Agent quality",
       };
+
+  useEffect(() => {
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  }, [language]);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,7 +197,7 @@ export default function Home() {
     setShowEvidence(true);
     const controller = new AbortController();
     const slowTimer = window.setTimeout(() => setLiveRunSlow(true), 8000);
-    const timeout = window.setTimeout(() => controller.abort(), 45000);
+    const timeout = window.setTimeout(() => controller.abort(), 30000);
     try {
       const response = await fetch("/api/investigations/INC-2407/run", {
         method: "POST",
@@ -200,6 +221,18 @@ export default function Home() {
       window.clearTimeout(timeout);
       setLiveRunSlow(false);
     }
+  }
+
+  function startGuidedDemo() {
+    setView("overview");
+    setSelected(0);
+    setApproved(false);
+    setMarket("US");
+    setDevice("Mobile");
+    setShowEvidence(false);
+    setLiveRun(null);
+    setLiveRunStatus("idle");
+    window.requestAnimationFrame(() => document.getElementById("live-investigation")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
   async function scanInjectedAnomaly() {
@@ -232,25 +265,30 @@ export default function Home() {
         </nav>
         <div className="sideBottom">
           <div className="system"><i /> {labels.systems}</div>
-          <div className="profile"><span>YL</span><div><strong>Yilin</strong><small>Monetization Ops</small></div><em>•••</em></div>
+          <div className="profile"><span>AP</span><div><strong>Demo Workspace</strong><small>Monetization Ops</small></div></div>
         </div>
       </aside>
 
       <section className="workspace">
         <header>
           <div><p className="eyebrow">{labels.controlCenter}</p><h1>{labels.hello}</h1><p>{labels.subtitle}</p></div>
-          <div className="headerActions"><button onClick={() => setLanguage(language === "zh" ? "en" : "zh")} className="languageButton">{language === "zh" ? "EN" : "中文"}</button><button className="primary">{labels.action}</button></div>
+          <div className="headerActions"><button onClick={() => setLanguage(language === "zh" ? "en" : "zh")} className="languageButton">{language === "zh" ? "EN" : "中文"}</button><button onClick={startGuidedDemo} className="primary">{labels.action}</button></div>
         </header>
 
         {view === "overview" ? <>
+        <section className="demoGuide" aria-label={language === "zh" ? "推荐演示路径" : "Recommended demo path"}>
+          <span className="demoGuideIcon">▶</span>
+          <div><strong>{language === "zh" ? "推荐演示 · 约 30 秒" : "Recommended demo · about 30 seconds"}</strong><p>{language === "zh" ? "运行 INC-2407 → 查看真实工具调用 → 在人工审批闸门前停止" : "Run INC-2407 → inspect real tool calls → stop at the human approval gate"}</p></div>
+          <button onClick={startGuidedDemo}>{language === "zh" ? "定位真实调查 ↓" : "Jump to live investigation ↓"}</button>
+        </section>
         <section className="filterBar" aria-label="Dashboard filters">
           <div><strong>{labels.scope}</strong><span>{labels.scopeHint}</span></div>
-          <label>Market
+          <label>{language === "zh" ? "市场" : "Market"}
             <select value={market} onChange={(event) => setMarket(event.target.value as Market | "All")}>
               <option>All</option><option>US</option><option>DE</option><option>UK</option>
             </select>
           </label>
-          <label>Device
+          <label>{language === "zh" ? "设备" : "Device"}
             <select value={device} onChange={(event) => setDevice(event.target.value as Device | "All")}>
               <option>All</option><option>Mobile</option><option>Desktop</option>
             </select>
@@ -280,19 +318,19 @@ export default function Home() {
 
         <section className="contentGrid">
           <div className="panel incidents">
-            <div className="panelHead"><div><h2>{labels.liveIncidents}</h2><p>{labels.priority}</p></div><button>{language === "zh" ? "查看全部 →" : "View all →"}</button></div>
+            <div className="panelHead"><div><h2>{labels.liveIncidents}</h2><p>{labels.priority}</p></div><button onClick={() => setView("incidents")}>{language === "zh" ? "查看全部 →" : "View all →"}</button></div>
             <div className="incidentList">
               {detectedAnomalies.map((item, index) => (
                 <button key={item.id} onClick={() => { setSelected(index); setApproved(item.status === "Resolved"); setMarket(item.market); setDevice(item.device); setShowEvidence(false); }} className={`incident ${selected === index ? "selected" : ""}`}>
                   <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
-                  <div><strong>{item.title}</strong><small>{item.id} · ${item.estimatedImpact.toLocaleString()}/day impact</small></div>
-                  <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em><span className="status">{item.status}</span><span className="arrow">›</span>
+                  <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><small>{item.id} · ${item.estimatedImpact.toLocaleString()}/{language === "zh" ? "日影响" : "day impact"}</small></div>
+                  <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em><span className="status">{localizedStatus(item.status, language)}</span><span className="arrow">›</span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="panel run">
+          <div className="panel run" id="live-investigation">
             <div className="panelHead">
               <div>
                 <span className="liveDot">{incident.id === "INC-2407" ? "WORKERS AI · REAL LLM" : (language === "zh" ? "确定性回放" : "DETERMINISTIC REPLAY")}</span>
@@ -320,7 +358,7 @@ export default function Home() {
             )}
             <div className="timeline">
               {steps.map(([n, title, copy, state]) => (
-                <div className={`step ${approved ? "done" : state}`} key={n}><span>{approved || state === "done" ? "✓" : n}</span><div><strong>{title}</strong><p>{copy}</p></div>{state === "active" && !approved && <i>Analyzing</i>}</div>
+                <div className={`step ${approved ? "done" : state}`} key={n}><span>{approved || state === "done" ? "✓" : n}</span><div><strong>{title}</strong><p>{copy}</p></div>{state === "active" && !approved && <i>{uiCopy.analyzing}</i>}</div>
               ))}
             </div>
             <div className={`approval ${approved ? "approved" : ""} ${isLiveIncident && !liveRun ? "locked" : ""}`}>
@@ -341,7 +379,7 @@ export default function Home() {
             )}
             {showEvidence && displayedToolResults.length > 0 && (
               <div className="evidenceDrawer">
-                <div className="evidenceTitle"><strong>{liveRun ? "Live LLM decision + tool trace" : "Replay tool trace"}</strong><span>{displayedToolResults.length}/{displayedToolResults.length} tools succeeded</span></div>
+                <div className="evidenceTitle"><strong>{liveRun ? (language === "zh" ? "真实 LLM 决策与工具轨迹" : "Live LLM decision + tool trace") : (language === "zh" ? "规则回放工具轨迹" : "Replay tool trace")}</strong><span>{language === "zh" ? `${displayedToolResults.length}/${displayedToolResults.length} 个工具成功` : `${displayedToolResults.length}/${displayedToolResults.length} tools succeeded`}</span></div>
                 {displayedToolResults.map((result, index) => (
                   <div className="toolCall" key={`${result.tool}-${index}`}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
@@ -368,17 +406,17 @@ export default function Home() {
             <span className="datasetBadge">POST /api/anomalies/scan</span>
           </div>
           <div className="labControls">
-            <label>Market
+            <label>{language === "zh" ? "市场" : "Market"}
               <select value={injection.market} onChange={(event) => setInjection({ ...injection, market: event.target.value as Market })}>
                 <option>US</option><option>DE</option><option>UK</option>
               </select>
             </label>
-            <label>Device
+            <label>{language === "zh" ? "设备" : "Device"}
               <select value={injection.device} onChange={(event) => setInjection({ ...injection, device: event.target.value as Device })}>
                 <option>Mobile</option><option>Desktop</option>
               </select>
             </label>
-            <label>Metric
+            <label>{language === "zh" ? "指标" : "Metric"}
               <select value={injection.metric} onChange={(event) => {
                 const metric = event.target.value as InjectionRequest["metric"];
                 setInjection({ ...injection, metric, deltaPct: metric === "Spend" ? 40 : -28 });
@@ -386,7 +424,7 @@ export default function Home() {
                 <option>CTR</option><option>Spend</option><option>Revenue</option>
               </select>
             </label>
-            <label>Injected change
+            <label>{language === "zh" ? "注入变化" : "Injected change"}
               <input type="number" min="-80" max="100" value={injection.deltaPct} onChange={(event) => setInjection({ ...injection, deltaPct: Number(event.target.value) })} />
               <span>%</span>
             </label>
@@ -408,16 +446,16 @@ export default function Home() {
           <div className="panel ask">
             <div className="panelHead"><div><h2>{labels.ask}</h2><p>{labels.askHint}</p></div><span className="aiTag">✦ AI ANALYST</span></div>
             <div className="queryBox"><input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && askAgent()} placeholder={language === "zh" ? "为什么美国移动端收入昨天下降？" : "Why did US mobile revenue decline yesterday?"} /><button onClick={askAgent}>{language === "zh" ? "提问 →" : "Ask →"}</button></div>
-            {answer ? <div className="answer"><strong>Finding · grounded 14-day replay</strong><p>{answer}</p><small>Sources: filtered campaign metrics · detected incident · approved runbook</small></div> :
-              <div className="suggestions"><span>Try asking:</span><button onClick={() => setQuery("Compare CTR by market")}>Compare CTR by market</button><button onClick={() => setQuery("Show costly anomalies")}>Show costly anomalies</button></div>}
+            {answer ? <div className="answer"><strong>{language === "zh" ? "结论 · 基于 14 天回放" : "Finding · grounded 14-day replay"}</strong><p>{answer}</p><small>{language === "zh" ? "来源：筛选后的广告指标 · 检测事件 · 已批准运行手册" : "Sources: filtered campaign metrics · detected incident · approved runbook"}</small></div> :
+              <div className="suggestions"><span>{language === "zh" ? "试着问：" : "Try asking:"}</span><button onClick={() => setQuery("Compare CTR by market")}>{language === "zh" ? "按市场比较 CTR" : "Compare CTR by market"}</button><button onClick={() => setQuery("Show costly anomalies")}>{language === "zh" ? "显示高成本异常" : "Show costly anomalies"}</button></div>}
           </div>
           <div className="panel evaluation">
-            <div className="panelHead"><div><h2>{labels.quality}</h2><p>{language === "zh" ? "诚实的 14 天回放说明，不把 N=3 包装成满分模型" : "Honest 14-day replay, not a 100% claim on N=3"}</p></div><button>{language === "zh" ? "评估说明 →" : "Evaluation notes →"}</button></div>
+            <div className="panelHead"><div><h2>{labels.quality}</h2><p>{language === "zh" ? "诚实的 14 天回放说明，不把 N=3 包装成满分模型" : "Honest 14-day replay, not a 100% claim on N=3"}</p></div><button onClick={() => setView("evaluations")}>{language === "zh" ? "评估说明 →" : "Evaluation notes →"}</button></div>
             <div className="quality">
-              <div><strong>{replay.knownIncidentsFound}</strong><span>Known incidents found</span><small>at declared thresholds</small></div>
-              <div><strong>{replay.unaffectedSegmentsAlerted}</strong><span>Unaffected segments alerted</span><small>in this replay</small></div>
-              <div><strong>-15%</strong><span>CTR alert threshold</span><small>trade-off documented</small></div>
-              <div><strong>$0 key</strong><span>Paid API key required</span><small className="down">Workers AI free allocation</small></div>
+              <div><strong>{replay.knownIncidentsFound}</strong><span>{language === "zh" ? "命中的已知事件" : "Known incidents found"}</span><small>{language === "zh" ? "在声明阈值下" : "at declared thresholds"}</small></div>
+              <div><strong>{replay.unaffectedSegmentsAlerted}</strong><span>{language === "zh" ? "未受影响分组告警" : "Unaffected segments alerted"}</span><small>{language === "zh" ? "本次回放" : "in this replay"}</small></div>
+              <div><strong>-15%</strong><span>{language === "zh" ? "CTR 告警阈值" : "CTR alert threshold"}</span><small>{language === "zh" ? "已记录取舍" : "trade-off documented"}</small></div>
+              <div><strong>$0 key</strong><span>{language === "zh" ? "所需付费 API 密钥" : "Paid API key required"}</span><small className="down">Workers AI free allocation</small></div>
             </div>
           </div>
         </section>
@@ -425,6 +463,26 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function localizedIncidentTitle(id: string, fallback: string, language: "zh" | "en") {
+  if (language === "en") return fallback;
+  const titles: Record<string, string> = {
+    "INC-2407": "美国 · 移动端 CTR 突然下降",
+    "INC-2406": "德国 · 桌面端广告支出激增",
+    "INC-2405": "英国 · 移动端收入下降",
+  };
+  return titles[id] ?? fallback;
+}
+
+function localizedStatus(status: string, language: "zh" | "en") {
+  if (language === "en") return status;
+  const statuses: Record<string, string> = {
+    "Investigating": "调查中",
+    "Awaiting approval": "等待审批",
+    "Resolved": "已解决",
+  };
+  return statuses[status] ?? status;
 }
 
 function ModuleView({
@@ -454,7 +512,7 @@ function ModuleView({
         {detectedAnomalies.map((item) => (
           <button className="moduleCard" key={item.id} onClick={() => setView("overview")}>
             <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
-            <div><strong>{item.title}</strong><p>{item.evidence}</p><small>{item.id} · {item.status}</small></div>
+            <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><p>{item.evidence}</p><small>{item.id} · {localizedStatus(item.status, language)}</small></div>
             <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em>
           </button>
         ))}
@@ -463,7 +521,7 @@ function ModuleView({
       {view === "runs" && <div className="tracePage">
         {detectedAnomalies.map((item) => (
           <article key={item.id}>
-            <div><span className="liveDot">TRACE</span><strong>{item.id} · {item.title}</strong><small>{item.status}</small></div>
+            <div><span className="liveDot">TRACE</span><strong>{item.id} · {localizedIncidentTitle(item.id, item.title, language)}</strong><small>{localizedStatus(item.status, language)}</small></div>
             {item.id === "INC-2407"
               ? <p><code>live_only</code><span>{language === "zh" ? "该事件的 trace 不预置；请从总览运行真实 AI 调查后查看。" : "No trace is preloaded. Run the live AI investigation from Overview to generate it."}</span><em>○</em></p>
               : investigateIncident(item).map((tool) => <p key={tool.tool}><code>{tool.tool}</code><span>{tool.result}</span><em>✓</em></p>)}

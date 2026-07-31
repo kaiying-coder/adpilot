@@ -49,7 +49,10 @@ test("renders the AdPilot product shell", async () => {
   assert.match(html, /异常中心/);
   assert.match(html, /知识库/);
   assert.match(html, /评估中心/);
-  assert.match(html, /No LLM hypothesis exists before execution/);
+  assert.match(html, /运行前不存在 LLM 根因假设/);
+  assert.match(html, /开始 30 秒演示/);
+  assert.match(html, /推荐演示 · 约 30 秒/);
+  assert.doesNotMatch(html, /Yilin/);
   assert.doesNotMatch(html, /CTR shifted 3\.7σ|latency rose 920ms/);
   assert.doesNotMatch(html, /Rollback release v3\.18\.4/);
   assert.doesNotMatch(html, /Live LLM decision \+ tool trace/);
