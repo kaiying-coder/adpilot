@@ -52,6 +52,8 @@ test("renders the AdPilot product shell", async () => {
   assert.match(html, /运行前不存在 LLM 根因假设/);
   assert.match(html, /开始 30 秒演示/);
   assert.match(html, /推荐演示 · 约 30 秒/);
+  assert.match(html, /广告数据与收入影响为模拟数据/);
+  assert.match(html, /高风险商业化操作永不自动执行/);
   assert.doesNotMatch(html, /Yilin/);
   assert.doesNotMatch(html, /CTR shifted 3\.7σ|latency rose 920ms/);
   assert.doesNotMatch(html, /Rollback release v3\.18\.4/);

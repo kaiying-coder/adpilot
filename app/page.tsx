@@ -33,6 +33,7 @@ export default function Home() {
     trace: Array<{
       step: number;
       decision: string;
+      request: { tool: string; args: Record<string, unknown>; rationale: string };
       observation: { tool: string; purpose: string; result: string; source: string };
     }>;
     conclusion: {
@@ -281,6 +282,10 @@ export default function Home() {
           <div><strong>{language === "zh" ? "推荐演示 · 约 30 秒" : "Recommended demo · about 30 seconds"}</strong><p>{language === "zh" ? "运行 INC-2407 → 查看真实工具调用 → 在人工审批闸门前停止" : "Run INC-2407 → inspect real tool calls → stop at the human approval gate"}</p></div>
           <button onClick={startGuidedDemo}>{language === "zh" ? "定位真实调查 ↓" : "Jump to live investigation ↓"}</button>
         </section>
+        <div className="dataDisclosure" role="note">
+          <strong>{language === "zh" ? "真实性说明" : "What is real"}</strong>
+          <span>{language === "zh" ? "广告数据与收入影响为模拟数据；异常检测、指标查询、知识检索和 INC-2407 的 LLM 推理均为真实执行。" : "Ad data and revenue impact are simulated; anomaly detection, metric queries, knowledge retrieval, and INC-2407 LLM inference execute for real."}</span>
+        </div>
         <section className="filterBar" aria-label="Dashboard filters">
           <div><strong>{labels.scope}</strong><span>{labels.scopeHint}</span></div>
           <label>{language === "zh" ? "市场" : "Market"}
@@ -356,6 +361,18 @@ export default function Home() {
                 <small>{liveRunSlow ? "8s+" : "LIVE"}</small>
               </div>
             )}
+            {liveRun && (
+              <section className="resultSummary" aria-label={language === "zh" ? "调查结果摘要" : "Investigation result summary"}>
+                <div className="resultSummaryHead"><div><span>{language === "zh" ? "调查结果" : "Investigation result"}</span><strong>{language === "zh" ? "根因与处置摘要" : "Root cause and action summary"}</strong></div><b>{Math.round(liveRun.conclusion.confidence * 100)}% {language === "zh" ? "置信度" : "confidence"}</b></div>
+                <div className="resultSummaryGrid">
+                  <article><small>{language === "zh" ? "根因假设" : "ROOT-CAUSE HYPOTHESIS"}</small><p>{liveRun.conclusion.hypothesis}</p></article>
+                  <article><small>{language === "zh" ? "建议动作" : "RECOMMENDED ACTION"}</small><p>{liveRun.conclusion.recommendedAction}</p></article>
+                  <article><small>{language === "zh" ? "每日收入风险" : "DAILY REVENUE AT RISK"}</small><strong>${(incident.estimatedImpact / 1000).toFixed(1)}K/day</strong></article>
+                  <article><small>{language === "zh" ? "决策状态" : "DECISION STATUS"}</small><strong>{language === "zh" ? "等待人工审批" : "Awaiting human approval"}</strong></article>
+                </div>
+                <div className="evidenceChips"><span>{language === "zh" ? "关键证据" : "Key evidence"}</span>{liveRun.conclusion.evidence.slice(0, 3).map((evidence) => <em key={evidence}>{evidence}</em>)}</div>
+              </section>
+            )}
             <div className="timeline">
               {steps.map(([n, title, copy, state]) => (
                 <div className={`step ${approved ? "done" : state}`} key={n}><span>{approved || state === "done" ? "✓" : n}</span><div><strong>{title}</strong><p>{copy}</p></div>{state === "active" && !approved && <i>{uiCopy.analyzing}</i>}</div>
@@ -364,31 +381,26 @@ export default function Home() {
             <div className={`approval ${approved ? "approved" : ""} ${isLiveIncident && !liveRun ? "locked" : ""}`}>
               <div><span>{approved ? "✓" : isLiveIncident && !liveRun ? liveRunStatus === "error" ? "↑" : "○" : "!"}</span><div><strong>{approved ? (language === "zh" ? "操作已批准" : "Action approved") : isLiveIncident && !liveRun ? liveRunStatus === "error" ? (language === "zh" ? "已升级人工调查" : "Escalated to human investigation") : (language === "zh" ? "等待真实调查结果" : "Awaiting live investigation") : labels.approval}</strong><p>{approved ? (language === "zh" ? "模拟操作已排队，恢复监控窗口已启动。" : "Simulated action queued. Monitoring window started.") : isLiveIncident && !liveRun ? liveRunStatus === "error" ? (language === "zh" ? "统计异常仍然有效，但根因未经模型验证；审批和自动处置保持锁定。" : "The statistical anomaly remains valid, but the root cause is unverified. Approval and automated execution remain locked.") : (language === "zh" ? "运行前没有根因结论或处置动作；高风险操作入口保持锁定。" : "No root-cause conclusion or action exists before the run; high-risk execution stays locked.") : `${liveRun?.conclusion.recommendedAction ?? incident.action}. ${language === "zh" ? "预计恢复" : "Estimated recovery"}: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
               {!approved && (!isLiveIncident || liveRun) && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? (language === "zh" ? "保存中…" : "Saving…") : labels.approve}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? labels.hideEvidence : labels.evidence}</button></div>}
+              <p className="riskPolicy">{language === "zh" ? "安全策略：高风险商业化操作永不自动执行；此 Demo 仅模拟审批与处置。" : "Safety policy: high-risk monetization actions never auto-execute; this demo simulates approval and remediation only."}</p>
             </div>
             {liveRunStatus === "error" && <div className="degradedResult" role="status">
               <div><strong>{language === "zh" ? "降级结论 · 仅检测器" : "Degraded result · detector only"}</strong><span>35% confidence</span></div>
               <p>{language === "zh" ? "统计异常已确认；LLM 调查未完成，根因未知。" : "Statistical anomaly confirmed; LLM investigation incomplete and root cause unknown."}</p>
               <small>{language === "zh" ? "建议：升级人工分析，不执行自动处置。" : "Recommendation: escalate to a human analyst; execute no automated action."} · {liveRunError}</small>
             </div>}
-            {liveRun && incident.id === "INC-2407" && (
-              <div className="llmConclusion">
-                <div><strong>{language === "zh" ? "LLM 结论" : "LLM conclusion"}</strong><span>{Math.round(liveRun.conclusion.confidence * 100)}% confidence</span></div>
-                <p>{liveRun.conclusion.hypothesis}</p>
-                <small>{liveRun.conclusion.recommendedAction} · {liveRun.model}</small>
-              </div>
-            )}
             {showEvidence && displayedToolResults.length > 0 && (
               <div className="evidenceDrawer">
                 <div className="evidenceTitle"><strong>{liveRun ? (language === "zh" ? "真实 LLM 决策与工具轨迹" : "Live LLM decision + tool trace") : (language === "zh" ? "规则回放工具轨迹" : "Replay tool trace")}</strong><span>{language === "zh" ? `${displayedToolResults.length}/${displayedToolResults.length} 个工具成功` : `${displayedToolResults.length}/${displayedToolResults.length} tools succeeded`}</span></div>
                 {displayedToolResults.map((result, index) => (
                   <div className="toolCall" key={`${result.tool}-${index}`}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <div>
-                      <strong>{result.tool}</strong>
-                      <small>{liveRun?.trace[index]?.decision ?? result.purpose}</small>
-                      <p>{result.result}</p>
+                    <div className="traceDetails">
+                      <p><b>{language === "zh" ? "Agent 决策" : "Agent decision"}</b><span>{liveRun?.trace[index]?.decision ?? result.purpose}</span></p>
+                      <p><b>{language === "zh" ? "工具调用" : "Tool call"}</b><code>{result.tool}{liveRun?.trace[index]?.request ? `(${JSON.stringify(liveRun.trace[index].request.args)})` : ""}</code></p>
+                      <p><b>{language === "zh" ? "真实观测" : "Observation"}</b><span>{result.result}</span></p>
+                      <p><b>{language === "zh" ? "证据来源" : "Source"}</b><span>{result.source}</span></p>
                     </div>
-                    <em>✓ {result.source}</em>
+                    <em>✓</em>
                   </div>
                 ))}
               </div>
