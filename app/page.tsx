@@ -26,6 +26,7 @@ export default function Home() {
   const [market, setMarket] = useState<Market | "All">("All");
   const [device, setDevice] = useState<Device | "All">("All");
   const [liveRunStatus, setLiveRunStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [liveRunError, setLiveRunError] = useState("");
   const [liveRun, setLiveRun] = useState<{
     model: string;
     trace: Array<{
@@ -153,13 +154,18 @@ export default function Home() {
   async function runLiveInvestigation() {
     setLiveRunStatus("running");
     setLiveRun(null);
+    setLiveRunError("");
     setShowEvidence(true);
     try {
       const response = await fetch("/api/investigations/INC-2407/run", { method: "POST" });
-      if (!response.ok) throw new Error("Workers AI request failed");
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.errorCode ?? payload?.error ?? "AI_UPSTREAM_ERROR");
+      }
       setLiveRun(await response.json());
       setLiveRunStatus("done");
-    } catch {
+    } catch (error) {
+      setLiveRunError(error instanceof Error ? error.message : "Unknown Workers AI error");
       setLiveRunStatus("error");
     }
   }
@@ -279,7 +285,7 @@ export default function Home() {
               <div><span>{approved ? "✓" : "!"}</span><div><strong>{approved ? (language === "zh" ? "操作已批准" : "Action approved") : labels.approval}</strong><p>{approved ? (language === "zh" ? "模拟操作已排队，恢复监控窗口已启动。" : "Simulated action queued. Monitoring window started.") : `${incident.action}. ${language === "zh" ? "预计恢复" : "Estimated recovery"}: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
               {!approved && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? (language === "zh" ? "保存中…" : "Saving…") : labels.approve}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? labels.hideEvidence : labels.evidence}</button></div>}
             </div>
-            {liveRunStatus === "error" && <div className="runError">{language === "zh" ? "Workers AI 本次请求失败或额度暂不可用，请重试。" : "Workers AI request failed or quota is temporarily unavailable. Retry."}</div>}
+            {liveRunStatus === "error" && <div className="runError"><strong>{language === "zh" ? "Workers AI 本次请求未完成" : "Workers AI request did not complete"}</strong><span>{liveRunError}</span></div>}
             {liveRun && incident.id === "INC-2407" && (
               <div className="llmConclusion">
                 <div><strong>{language === "zh" ? "LLM 结论" : "LLM conclusion"}</strong><span>{Math.round(liveRun.conclusion.confidence * 100)}% confidence</span></div>

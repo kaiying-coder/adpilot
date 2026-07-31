@@ -157,7 +157,7 @@ The suite verifies:
 ## Tech stack
 
 - TypeScript, React, Next.js-compatible Vinext runtime
-- Cloudflare Workers + Workers AI (`@cf/meta/llama-3.1-8b-instruct-fast`)
+- Cloudflare Workers + Workers AI (`@cf/meta/llama-3.1-8b-instruct-fp8`)
 - Statistical z-score/changepoint detection over 14-day campaign data
 - LLM-selected tools with computed observations and a concise decision trace
 - Local weighted retrieval over approved runbooks and historical cases

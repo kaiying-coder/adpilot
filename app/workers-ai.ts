@@ -6,7 +6,7 @@ import {
 } from "./agent";
 import type { DetectedAnomaly } from "./data";
 
-const MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
 const REQUIRED_TOOLS: AgentToolName[] = [
   "query_metrics",
   "search_runbook",
@@ -26,44 +26,36 @@ export type WorkersAIBinding = {
   run(model: string, input: Record<string, unknown>): Promise<unknown>;
 };
 
-type ModelDecision =
-  | {
-      type: "tool";
+type PlanDecision = {
+  plan: Array<{
       tool: AgentToolName;
       args?: AgentToolRequest["args"];
       rationale: string;
-    }
-  | {
-      type: "final";
-      hypothesis: string;
-      evidence: string[];
-      recommendedAction: string;
-      confidence: number;
-      rationale: string;
-    };
+  }>;
+};
 
-function parseDecision(raw: string): ModelDecision {
+type FinalDecision = {
+  hypothesis: string;
+  evidence: string[];
+  recommendedAction: string;
+  confidence: number;
+  rationale: string;
+};
+
+function parseJSON<T>(raw: string): T {
   const cleaned = raw
     .trim()
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/, "");
-  return JSON.parse(cleaned) as ModelDecision;
+  return JSON.parse(cleaned) as T;
 }
 
-function promptFor(
-  incident: DetectedAnomaly,
-  trace: LiveAgentTrace[],
-  usedTools: Set<AgentToolName>
-) {
-  const observations = trace.length
-    ? trace.map((item) => `${item.request.tool}: ${item.observation.result}`).join("\n")
-    : "No tools called yet.";
-  const missingTools = REQUIRED_TOOLS.filter((tool) => !usedTools.has(tool));
+function planningPrompt(incident: DetectedAnomaly, correction: string) {
   return `
 You are AdPilot, an advertising monetization incident investigator.
-Return ONLY one valid JSON object. Do not reveal private chain-of-thought.
-Give only a short operational rationale for the next observable action.
+Create a short read-only investigation plan. Return ONLY one valid JSON object.
+Do not reveal private chain-of-thought; give only short operational rationales.
 
 Incident:
 ${JSON.stringify({
@@ -81,17 +73,28 @@ Available read-only tools:
 - search_runbook({ query }): retrieves approved runbooks with citations.
 - get_similar_incidents({}): retrieves prior incident evidence.
 
-Observations so far:
+Use each available tool exactly once. Choose the metric dimensions, search query, and order.
+Respond in this shape:
+{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR latency rollback"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
+Every tool value must exactly match one available tool.
+${correction ? `Correction from the previous attempt: ${correction}` : ""}
+`.trim();
+}
+
+function conclusionPrompt(incident: DetectedAnomaly, trace: LiveAgentTrace[], correction: string) {
+  const observations = trace.map((item) => `${item.request.tool}: ${item.observation.result}`).join("\n");
+  return `
+You are AdPilot. Produce the incident conclusion from the verified tool observations below.
+Return ONLY one valid JSON object. Do not reveal private chain-of-thought.
+
+Incident: ${JSON.stringify({ id: incident.id, estimatedImpactUsdPerDay: incident.estimatedImpact })}
+Verified observations:
 ${observations}
 
-Tools still required before a final answer: ${missingTools.join(", ") || "none"}.
-If any tools are still required, choose one of them and respond:
-{"type":"tool","tool":"query_metrics|search_runbook|get_similar_incidents","args":{},"rationale":"one concise sentence"}
-
-Only when no tools are missing, respond:
-{"type":"final","hypothesis":"...","evidence":["..."],"recommendedAction":"...","confidence":0.0,"rationale":"one concise sentence"}
-
-All numbers in the final answer must come from tool observations. A rollback is high risk and must remain behind human approval.
+Respond in this shape:
+{"hypothesis":"...","evidence":["..."],"recommendedAction":"...","confidence":0.0,"rationale":"one concise operational sentence"}
+All numbers must come from the observations. Any rollback must remain behind explicit human approval.
+${correction ? `Correction from the previous attempt: ${correction}` : ""}
 `.trim();
 }
 
@@ -100,35 +103,83 @@ export async function runWorkersAIInvestigation(
   ai: WorkersAIBinding
 ) {
   const trace: LiveAgentTrace[] = [];
-  const usedTools = new Set<AgentToolName>();
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
-
-  for (let step = 1; step <= 5; step += 1) {
+  const callModel = async (prompt: string) => {
     const result = await ai.run(MODEL, {
       messages: [
         {
           role: "system",
           content: "You are a precise AI operations agent. Follow the requested JSON contract.",
         },
-        { role: "user", content: promptFor(incident, trace, usedTools) },
+        { role: "user", content: prompt },
       ],
-      max_tokens: 420,
+      max_tokens: 640,
       temperature: 0.1,
     }) as WorkersAIResponse;
-
     usage = {
       promptTokens: usage.promptTokens + (result.usage?.prompt_tokens ?? 0),
       completionTokens: usage.completionTokens + (result.usage?.completion_tokens ?? 0),
       totalTokens: usage.totalTokens + (result.usage?.total_tokens ?? 0),
     };
-
     if (!result.response) throw new Error("Workers AI returned an empty response.");
-    const decision = parseDecision(result.response);
+    return result.response;
+  };
 
-    if (decision.type === "final") {
-      const missing = REQUIRED_TOOLS.filter((tool) => !usedTools.has(tool));
-      if (missing.length) {
-        throw new Error(`Model attempted to finish before required tools: ${missing.join(", ")}`);
+  let plan: PlanDecision["plan"] = [];
+  let correction = "";
+  for (let attempt = 0; attempt < 3 && !plan.length; attempt += 1) {
+    try {
+      const proposed = parseJSON<PlanDecision>(await callModel(planningPrompt(incident, correction)));
+      const seen = new Set<AgentToolName>();
+      plan = (Array.isArray(proposed.plan) ? proposed.plan : []).filter((item) => {
+        if (!REQUIRED_TOOLS.includes(item.tool) || seen.has(item.tool)) return false;
+        seen.add(item.tool);
+        return true;
+      });
+    } catch {
+      plan = [];
+    }
+    correction = "Return a plan array using each of the three exact tool names once.";
+  }
+
+  const plannedTools = new Set(plan.map((item) => item.tool));
+  for (const tool of REQUIRED_TOOLS) {
+    if (!plannedTools.has(tool)) {
+      plan.push({
+        tool,
+        args: tool === "query_metrics"
+          ? { market: incident.market, device: incident.device, window: 14 }
+          : tool === "search_runbook"
+            ? { query: `${incident.metric} ${incident.cause} rollback` }
+            : {},
+        rationale: "Required evidence check added by the investigation policy.",
+      });
+    }
+  }
+
+  for (const [index, item] of plan.entries()) {
+    const request: AgentToolRequest = {
+      tool: item.tool,
+      args: item.args,
+      rationale: item.rationale,
+    };
+    const observation = executeAgentTool(request, incident);
+    trace.push({
+      step: index + 1,
+      decision: item.rationale,
+      request,
+      observation,
+    });
+  }
+
+  correction = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const decision = parseJSON<FinalDecision>(
+        await callModel(conclusionPrompt(incident, trace, correction))
+      );
+      if (!decision.hypothesis || !Array.isArray(decision.evidence) || !decision.recommendedAction) {
+        throw new Error("Incomplete conclusion");
       }
       return {
         mode: "workers-ai-live" as const,
@@ -137,11 +188,8 @@ export async function runWorkersAIInvestigation(
         detector: incident.detector,
         trace,
         conclusion: {
-          hypothesis: decision.hypothesis,
-          evidence: decision.evidence,
-          recommendedAction: decision.recommendedAction,
-          confidence: Math.max(0, Math.min(1, decision.confidence)),
-          rationale: decision.rationale,
+          ...decision,
+          confidence: Math.max(0, Math.min(1, Number(decision.confidence) || 0)),
         },
         usage,
         billing: {
@@ -150,24 +198,9 @@ export async function runWorkersAIInvestigation(
         },
         guardrail: "Recommendation only; execution requires explicit human approval.",
       };
+    } catch {
+      correction = "Return the complete conclusion as one plain JSON object with every requested field.";
     }
-
-    if (!REQUIRED_TOOLS.includes(decision.tool)) {
-      throw new Error(`Unsupported tool requested: ${decision.tool}`);
-    }
-    const request: AgentToolRequest = {
-      tool: decision.tool,
-      args: decision.args,
-      rationale: decision.rationale,
-    };
-    const observation = executeAgentTool(request, incident);
-    usedTools.add(decision.tool);
-    trace.push({
-      step,
-      decision: decision.rationale,
-      request,
-      observation,
-    });
   }
 
   throw new Error("Workers AI did not produce a final answer within the step limit.");

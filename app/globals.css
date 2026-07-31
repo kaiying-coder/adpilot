@@ -62,7 +62,8 @@ header p,.panelHead p { margin:0; color:var(--muted); font-size:12px; }
 .run { position:relative; }.liveDot { font-size:8px; color:#287b60; font-weight:800; letter-spacing:1px; display:block; margin-bottom:5px; }.liveDot:before { width:5px;height:5px }
 .elapsed { color:#818984;font-size:9px }.progress { height:3px; background:#edf1ee; margin:0 -18px 15px; }.progress i { display:block;height:100%;background:#5cb58e;transition:.4s }
 .liveRunButton { border:0;background:#173f33;color:#fff;border-radius:7px;padding:8px 10px;font-size:8px;font-weight:800;white-space:nowrap }.liveRunButton:disabled { opacity:.55;cursor:wait }
-.runError { margin:9px 0;padding:9px 10px;border-radius:7px;background:#fff0ed;border:1px solid #efc8c0;color:#9b493b;font-size:8px }
+.runError { margin:9px 0;padding:9px 10px;border-radius:7px;background:#fff0ed;border:1px solid #efc8c0;color:#9b493b;font-size:8px;display:grid;gap:3px }
+.runError span { color:#7e4c43 }
 .llmConclusion { margin-top:10px;padding:11px;border-radius:9px;background:#eaf5ef;border:1px solid #b9dccb }.llmConclusion>div { display:flex;justify-content:space-between;align-items:center }.llmConclusion strong { font-size:10px }.llmConclusion span { background:#fff;color:#246b50;border-radius:10px;padding:3px 7px;font-size:7px;font-weight:800 }.llmConclusion p { margin:6px 0 4px;font-size:9px;line-height:1.5 }.llmConclusion small { color:#61736b;font-size:7px }
 .timeline { display:grid; gap:0; }.step { display:grid; grid-template-columns:24px 1fr auto; gap:10px; min-height:48px; position:relative; }
 .step>span { width:21px;height:21px;border-radius:50%;border:1px solid #cad3ce;display:grid;place-items:center;font-size:8px;color:#84908a;background:white;z-index:1 }

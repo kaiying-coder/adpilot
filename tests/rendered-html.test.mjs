@@ -6,11 +6,14 @@ workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
 const { default: worker } = await import(workerUrl.href);
 let aiCall = 0;
 const aiDecisions = [
-  { type: "tool", tool: "query_metrics", args: { market: "US", device: "Mobile", window: 14 }, rationale: "Measure the affected segment." },
-  { type: "tool", tool: "search_runbook", args: { query: "CTR latency release rollback" }, rationale: "Ground the investigation." },
-  { type: "tool", tool: "get_similar_incidents", args: {}, rationale: "Compare prior incidents." },
   {
-    type: "final",
+    plan: [
+      { tool: "query_metrics", args: { market: "US", device: "Mobile", window: 14 }, rationale: "Measure the affected segment." },
+      { tool: "search_runbook", args: { query: "CTR latency release rollback" }, rationale: "Ground the investigation." },
+      { tool: "get_similar_incidents", args: {}, rationale: "Compare prior incidents." },
+    ],
+  },
+  {
     hypothesis: "The mobile release caused a latency regression and CTR decline.",
     evidence: ["Computed metric shift", "Approved runbook", "Similar incident"],
     recommendedAction: "Request approval to roll back v3.18.4.",

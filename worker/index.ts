@@ -22,6 +22,16 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+function classifyAIError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("empty response")) return "AI_EMPTY_RESPONSE";
+  if (message.includes("before required tools")) return "AI_TOOL_SEQUENCE_INCOMPLETE";
+  if (message.includes("within the step limit")) return "AI_STEP_LIMIT";
+  if (message.includes("JSON")) return "AI_OUTPUT_INVALID";
+  if (message.includes("Unsupported tool")) return "AI_TOOL_UNSUPPORTED";
+  return "AI_UPSTREAM_ERROR";
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -55,7 +65,7 @@ const worker = {
         return Response.json(
           {
             error: "Workers AI investigation failed",
-            detail: error instanceof Error ? error.message : "Unknown model error",
+            errorCode: classifyAIError(error),
             retryable: true,
           },
           { status: 502 }
