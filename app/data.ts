@@ -316,7 +316,14 @@ export function replaySummary(detected: DetectedAnomaly[]) {
     threshold: "CTR ≤ -15%, spend ≥ +24.5%, revenue ≤ -15%",
     knownIncidentsFound: `${quality.truePositives}/${anomalyGroundTruth.length}`,
     unaffectedSegmentsAlerted: quality.falsePositives,
+    sampleSize: anomalyGroundTruth.length,
+    evaluationLimit: "This is a three-incident replay sanity check, not a production precision/recall claim.",
     tradeoff: "Relaxing the CTR threshold from -15% to -12% increases sensitivity but promotes normal mobile volatility to the watchlist.",
+    sensitivity: [
+      { ctrThreshold: "-18%", behavior: "Lower alert volume; may miss smaller sustained drops." },
+      { ctrThreshold: "-15%", behavior: "Demo operating point; finds the known sustained CTR incident." },
+      { ctrThreshold: "-12%", behavior: "Higher sensitivity; normal mobile volatility enters the watchlist." },
+    ],
   };
 }
 

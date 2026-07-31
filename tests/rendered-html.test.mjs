@@ -54,6 +54,9 @@ test("renders the AdPilot product shell", async () => {
   assert.match(html, /推荐演示 · 约 30 秒/);
   assert.match(html, /广告数据与收入影响为模拟数据/);
   assert.match(html, /高风险商业化操作永不自动执行/);
+  assert.match(html, /KPI、趋势和异常列表按筛选条件/);
+  assert.match(html, /不是生产准确率声明/);
+  assert.match(html, /不等于 100% 精确率、召回率或 F1/);
   assert.doesNotMatch(html, /Yilin/);
   assert.doesNotMatch(html, /CTR shifted 3\.7σ|latency rose 920ms/);
   assert.doesNotMatch(html, /Rollback release v3\.18\.4/);
@@ -89,6 +92,9 @@ test("anomaly detector reports an honest replay summary", async () => {
   assert.equal(body.anomalies.length, 3);
   assert.equal(body.replay.knownIncidentsFound, "3/3");
   assert.equal(body.replay.unaffectedSegmentsAlerted, 0);
+  assert.equal(body.replay.sampleSize, 3);
+  assert.match(body.replay.evaluationLimit, /not a production/i);
+  assert.equal(body.replay.sensitivity.length, 3);
   assert.match(body.replay.tradeoff, /threshold/i);
   assert.ok(Math.abs(body.anomalies[0].detector.zScore) > 3);
   assert.equal(Math.round(body.anomalies[0].detector.latencyDeltaMs), 920);

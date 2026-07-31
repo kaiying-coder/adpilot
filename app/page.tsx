@@ -125,7 +125,7 @@ export default function Home() {
         overview: "总览", incidents: "异常中心", runs: "Agent 运行", knowledge: "知识库", evaluations: "评估中心",
         hello: "AdPilot 演示工作区", subtitle: "14 天广告数据回放 · INC-2407 使用真实 LLM 和工具调用。", action: "开始 30 秒演示",
         controlCenter: "商业化控制中心", systems: "所有系统运行正常", scope: "数据范围",
-        scopeHint: "整页指标由筛选条件驱动，对 14 天数据重新计算。", revenue: "收入", anomaly: "检测异常",
+        scopeHint: "KPI、趋势和异常列表按筛选条件对 14 天数据重新计算。", revenue: "收入", anomaly: "检测异常",
         ctrCvr: "点击率 / 转化率", roas: "广告投入回报率", trend: "收入趋势",
         liveIncidents: "回放异常", priority: "按预估收入影响排序", investigation: "Agent 调查",
         approval: "需要人工审批", approve: "批准操作", evidence: "查看证据", hideEvidence: "收起证据",
@@ -135,7 +135,7 @@ export default function Home() {
         overview: "Overview", incidents: "Incidents", runs: "Agent runs", knowledge: "Knowledge", evaluations: "Evaluations",
         hello: "AdPilot demo workspace", subtitle: "14-day ad data replay · INC-2407 uses a real LLM and tool calls.", action: "Start 30-second demo",
         controlCenter: "MONETIZATION CONTROL CENTER", systems: "All systems operational", scope: "Data scope",
-        scopeHint: "All dashboard values update through the AdPilot API.", revenue: "Revenue", anomaly: "Detected anomalies",
+        scopeHint: "KPIs, trend, and incident list recompute from filtered 14-day data.", revenue: "Revenue", anomaly: "Detected anomalies",
         ctrCvr: "CTR / CVR", roas: "Return on ad spend", trend: "Revenue trend",
         liveIncidents: "Replay incidents", priority: "Prioritized by estimated revenue impact", investigation: "Agent investigation",
         approval: "Human approval required", approve: "Approve action", evidence: "Review evidence", hideEvidence: "Hide evidence",
@@ -325,13 +325,16 @@ export default function Home() {
           <div className="panel incidents">
             <div className="panelHead"><div><h2>{labels.liveIncidents}</h2><p>{labels.priority}</p></div><button onClick={() => setView("incidents")}>{language === "zh" ? "查看全部 →" : "View all →"}</button></div>
             <div className="incidentList">
-              {detectedAnomalies.map((item, index) => (
+              {visibleAnomalies.map((item) => {
+                const index = detectedAnomalies.findIndex((candidate) => candidate.id === item.id);
+                return (
                 <button key={item.id} onClick={() => { setSelected(index); setApproved(item.status === "Resolved"); setMarket(item.market); setDevice(item.device); setShowEvidence(false); }} className={`incident ${selected === index ? "selected" : ""}`}>
                   <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
                   <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><small>{item.id} · ${item.estimatedImpact.toLocaleString()}/{language === "zh" ? "日影响" : "day impact"}</small></div>
                   <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em><span className="status">{localizedStatus(item.status, language)}</span><span className="arrow">›</span>
-                </button>
-              ))}
+                </button>);
+              })}
+              {visibleAnomalies.length === 0 && <div className="emptyScope"><strong>{language === "zh" ? "当前范围没有检测到异常" : "No anomaly detected in this scope"}</strong><span>{language === "zh" ? "KPI 与趋势仍来自筛选后的 14 天数据。" : "KPIs and trend still use the filtered 14-day data."}</span></div>}
             </div>
           </div>
 
@@ -469,6 +472,7 @@ export default function Home() {
               <div><strong>-15%</strong><span>{language === "zh" ? "CTR 告警阈值" : "CTR alert threshold"}</span><small>{language === "zh" ? "已记录取舍" : "trade-off documented"}</small></div>
               <div><strong>$0 key</strong><span>{language === "zh" ? "所需付费 API 密钥" : "Paid API key required"}</span><small className="down">Workers AI free allocation</small></div>
             </div>
+            <p className="evaluationCaveat">{language === "zh" ? "评估边界：N=3 只做回放健全性检查，不是生产准确率声明；3/3 不等于 100% 精确率、召回率或 F1。" : "Boundary: N=3 is a replay sanity check, not a production accuracy claim; 3/3 is not 100% precision, recall, or F1."}</p>
           </div>
         </section>
         </> : <ModuleView view={view} language={language} setView={setView} />}
@@ -556,7 +560,15 @@ function ModuleView({
         <article><strong>{quality.unaffectedSegmentsAlerted}</strong><span>Unaffected alerts / 未受影响分组告警</span></article>
         <article><strong>-15%</strong><span>CTR threshold / 告警阈值</span></article>
         <article><strong>10K/day</strong><span>Free Workers AI neurons</span></article>
-        <div><h3>14-day replay disclosure</h3><p>{quality.threshold}. {quality.tradeoff}</p><code>GET /api/evaluations</code></div>
+        <div className="evaluationDisclosure">
+          <h3>{language === "zh" ? "评估边界：不是生产准确率声明" : "Evaluation boundary: not a production accuracy claim"}</h3>
+          <p>{language === "zh" ? `这里只用 ${quality.sampleSize} 个已知事件做 14 天回放健全性检查。3/3 表示在当前阈值下找到了三个已知事件，不等于 100% 精确率、召回率或 F1。` : `This is a 14-day sanity check with ${quality.sampleSize} known incidents. 3/3 means the current thresholds found those incidents; it is not 100% precision, recall, or F1.`}</p>
+          <code>GET /api/evaluations</code>
+        </div>
+        <div className="thresholdTable">
+          <h3>{language === "zh" ? "CTR 阈值取舍" : "CTR threshold trade-off"}</h3>
+          {quality.sensitivity.map((row) => <p key={row.ctrThreshold}><strong>{row.ctrThreshold}</strong><span>{language === "zh" ? ({ "-18%": "告警更少，但可能漏掉较小的持续下降。", "-15%": "当前演示工作点；命中已知的持续 CTR 异常。", "-12%": "灵敏度更高，但正常移动端波动会进入观察列表。" }[row.ctrThreshold] ?? row.behavior) : row.behavior}</span></p>)}
+        </div>
       </div>}
     </section>
   );

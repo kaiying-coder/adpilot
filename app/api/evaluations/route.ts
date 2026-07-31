@@ -6,6 +6,7 @@ export async function GET() {
   return NextResponse.json({
     dataset: "adpilot-14-day-replay-v2",
     detector: replay,
+    caveat: replay.evaluationLimit,
     retrieval: {
       corpusSize: 6,
       testQueries: 3,
