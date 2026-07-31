@@ -1,6 +1,8 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { detectedAnomalies } from "../app/data";
+import { runWorkersAIInvestigation, type WorkersAIBinding } from "../app/workers-ai";
 
 interface Env {
   ASSETS: Fetcher;
@@ -12,6 +14,7 @@ interface Env {
       };
     };
   };
+  AI: WorkersAIBinding;
 }
 
 interface ExecutionContext {
@@ -38,6 +41,26 @@ const worker = {
           return result.response();
         },
       }, allowedWidths);
+    }
+
+    if (
+      request.method === "POST" &&
+      url.pathname === "/api/investigations/INC-2407/run"
+    ) {
+      const incident = detectedAnomalies.find((item) => item.id === "INC-2407");
+      if (!incident) return Response.json({ error: "Incident not found" }, { status: 404 });
+      try {
+        return Response.json(await runWorkersAIInvestigation(incident, env.AI));
+      } catch (error) {
+        return Response.json(
+          {
+            error: "Workers AI investigation failed",
+            detail: error instanceof Error ? error.message : "Unknown model error",
+            retryable: true,
+          },
+          { status: 502 }
+        );
+      }
     }
 
     return handler.fetch(request, env, ctx);

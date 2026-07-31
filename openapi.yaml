@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: AdPilot API
-  version: 1.0.0
-  description: Free, deterministic API for the AdPilot portfolio demo.
+  version: 2.0.0
+  description: Statistical anomaly replay plus a live Workers AI investigation loop for INC-2407.
 servers:
   - url: https://adpilot-ai-ops.kaiying-coder.workers.dev
 paths:
@@ -20,9 +20,15 @@ paths:
               schema: { $ref: "#/components/schemas/MetricsResponse" }
   /api/anomalies:
     get:
-      summary: List detected anomalies and detector quality
+      summary: List statistically detected anomalies and replay disclosure
       responses:
-        "200": { description: Three seeded incidents and precision/recall/F1 }
+        "200": { description: Detected incidents, thresholds, and replay trade-offs }
+  /api/anomalies/scan:
+    post:
+      summary: Inject a new anomaly into an in-memory copy and scan all 84 rows
+      responses:
+        "200": { description: Detection result for the previously unseen input }
+        "400": { description: Invalid injection request }
   /api/investigations/{id}:
     get:
       summary: Read an investigation workflow and auditable tool trace
@@ -50,6 +56,16 @@ paths:
         "200": { description: Approval audit record and simulated execution }
         "400": { description: Explicit approval was not supplied }
         "404": { description: Incident not found }
+  /api/investigations/{id}/run:
+    post:
+      summary: Run the live Workers AI tool loop for INC-2407
+      description: The model chooses read-only tools, receives computed observations, and returns a recommendation behind human approval.
+      parameters:
+        - { $ref: "#/components/parameters/IncidentId" }
+      responses:
+        "200": { description: Model, decision trace, tool observations, conclusion, confidence, and guardrail }
+        "400": { description: Live LLM scope is limited to INC-2407 }
+        "502": { description: Workers AI inference failed and can be retried }
   /api/knowledge:
     get:
       summary: Search approved runbooks and historical cases
@@ -72,7 +88,7 @@ components:
   schemas:
     MetricsResponse:
       type: object
-      required: [filters, rowCount, summary, trend, rows]
+      required: [filters, rowCount, summary, trend]
       properties:
         filters:
           type: object
@@ -95,6 +111,3 @@ components:
             properties:
               date: { type: string }
               value: { type: number }
-        rows:
-          type: array
-          items: { type: object }

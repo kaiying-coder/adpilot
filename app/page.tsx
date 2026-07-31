@@ -5,9 +5,10 @@ import {
   adMetrics,
   dailyRevenue,
   detectedAnomalies,
-  evaluateDetector,
+  replaySummary,
   summarize,
   type Device,
+  type InjectionRequest,
   type Market,
 } from "./data";
 import { investigateIncident } from "./agent";
@@ -24,6 +25,35 @@ export default function Home() {
   const [showEvidence, setShowEvidence] = useState(false);
   const [market, setMarket] = useState<Market | "All">("All");
   const [device, setDevice] = useState<Device | "All">("All");
+  const [liveRunStatus, setLiveRunStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [liveRun, setLiveRun] = useState<{
+    model: string;
+    trace: Array<{
+      step: number;
+      decision: string;
+      observation: { tool: string; purpose: string; result: string; source: string };
+    }>;
+    conclusion: {
+      hypothesis: string;
+      evidence: string[];
+      recommendedAction: string;
+      confidence: number;
+      rationale: string;
+    };
+    billing: { freeAllocation: string };
+  } | null>(null);
+  const [injection, setInjection] = useState<InjectionRequest>({
+    market: "DE",
+    device: "Mobile",
+    metric: "CTR",
+    deltaPct: -28,
+  });
+  const [scanStatus, setScanStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [scanResult, setScanResult] = useState<{
+    detected: boolean;
+    rowsScanned: number;
+    anomaly: { id: string; delta: number; detector?: { zScore: number; changePoint: string } } | null;
+  } | null>(null);
   const incident = detectedAnomalies[selected];
   const filteredRows = useMemo(
     () => adMetrics.filter((row) =>
@@ -36,13 +66,17 @@ export default function Home() {
   const [trend, setTrend] = useState(() => dailyRevenue(filteredRows));
   const [apiLive, setApiLive] = useState(false);
   const maxRevenue = Math.max(...trend.map((point) => point.value), 1);
-  const detectorQuality = useMemo(() => evaluateDetector(detectedAnomalies), []);
+  const replay = useMemo(() => replaySummary(detectedAnomalies), []);
   const toolResults = useMemo(() => investigateIncident(incident), [incident]);
+  const displayedToolResults = liveRun && incident.id === "INC-2407"
+    ? liveRun.trace.map((item) => item.observation)
+    : toolResults;
   const visibleAnomalies = detectedAnomalies.filter((item) =>
     (market === "All" || item.market === market) &&
     (device === "All" || item.device === device)
   );
   const progress = useMemo(() => (approved ? 100 : selected === 2 ? 100 : 68), [approved, selected]);
+  const revenueProtected = visibleAnomalies.reduce((sum, item) => sum + item.estimatedImpact, 0);
   const steps = [
     ["01", "Anomaly detected", `${incident.metric} moved ${Math.abs(incident.delta)}% from its expected baseline.`, "done"],
     ["02", "Dimensions investigated", `Impact narrowed to ${incident.market} · ${incident.device} traffic.`, "done"],
@@ -53,23 +87,23 @@ export default function Home() {
   const labels = language === "zh"
     ? {
         overview: "总览", incidents: "异常中心", runs: "Agent 运行", knowledge: "知识库", evaluations: "评估中心",
-        hello: "晚上好，Yilin。", subtitle: "AdPilot 正在监控一套可复现的 14 天广告数据。", action: "＋ 新建调查",
+        hello: "晚上好，Yilin。", subtitle: "AdPilot 正在回放 14 天广告数据，并用真实 LLM 调查 INC-2407。", action: "＋ 新建调查",
         controlCenter: "商业化控制中心", systems: "所有系统运行正常", scope: "数据范围",
-        scopeHint: "整页指标通过 AdPilot API 实时更新。", revenue: "收入", anomaly: "检测异常",
+        scopeHint: "整页指标由筛选条件驱动，对 14 天数据重新计算。", revenue: "收入", anomaly: "检测异常",
         ctrCvr: "点击率 / 转化率", roas: "广告投入回报率", trend: "收入趋势",
-        liveIncidents: "实时异常", priority: "按预估收入影响排序", investigation: "Agent 调查",
+        liveIncidents: "回放异常", priority: "按预估收入影响排序", investigation: "Agent 调查",
         approval: "需要人工审批", approve: "批准操作", evidence: "查看证据", hideEvidence: "收起证据",
-        ask: "询问商业化数据", askHint: "回答基于实时指标和已批准知识", quality: "Agent 质量",
+        ask: "询问商业化数据", askHint: "回答基于当前回放指标和已批准知识", quality: "Agent 质量",
       }
     : {
         overview: "Overview", incidents: "Incidents", runs: "Agent runs", knowledge: "Knowledge", evaluations: "Evaluations",
-        hello: "Good evening, Yilin.", subtitle: "AdPilot is monitoring a reproducible 14-day advertising dataset.", action: "＋ New investigation",
+        hello: "Good evening, Yilin.", subtitle: "AdPilot replays 14 days of ad data and investigates INC-2407 with a real LLM.", action: "＋ New investigation",
         controlCenter: "MONETIZATION CONTROL CENTER", systems: "All systems operational", scope: "Data scope",
         scopeHint: "All dashboard values update through the AdPilot API.", revenue: "Revenue", anomaly: "Detected anomalies",
         ctrCvr: "CTR / CVR", roas: "Return on ad spend", trend: "Revenue trend",
-        liveIncidents: "Live incidents", priority: "Prioritized by estimated revenue impact", investigation: "Agent investigation",
+        liveIncidents: "Replay incidents", priority: "Prioritized by estimated revenue impact", investigation: "Agent investigation",
         approval: "Human approval required", approve: "Approve action", evidence: "Review evidence", hideEvidence: "Hide evidence",
-        ask: "Ask your monetization data", askHint: "Answers grounded in live metrics and approved knowledge", quality: "Agent quality",
+        ask: "Ask your monetization data", askHint: "Answers grounded in replay metrics and approved knowledge", quality: "Agent quality",
       };
 
   useEffect(() => {
@@ -116,6 +150,37 @@ export default function Home() {
     localStorage.setItem(`adpilot:${incident.id}:approval`, JSON.stringify(payload.audit));
   }
 
+  async function runLiveInvestigation() {
+    setLiveRunStatus("running");
+    setLiveRun(null);
+    setShowEvidence(true);
+    try {
+      const response = await fetch("/api/investigations/INC-2407/run", { method: "POST" });
+      if (!response.ok) throw new Error("Workers AI request failed");
+      setLiveRun(await response.json());
+      setLiveRunStatus("done");
+    } catch {
+      setLiveRunStatus("error");
+    }
+  }
+
+  async function scanInjectedAnomaly() {
+    setScanStatus("running");
+    setScanResult(null);
+    try {
+      const response = await fetch("/api/anomalies/scan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(injection),
+      });
+      if (!response.ok) throw new Error("Scan failed");
+      setScanResult(await response.json());
+      setScanStatus("done");
+    } catch {
+      setScanStatus("error");
+    }
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -152,14 +217,14 @@ export default function Home() {
               <option>All</option><option>Mobile</option><option>Desktop</option>
             </select>
           </label>
-          <span className="datasetBadge">{apiLive ? "API LIVE" : "LOCAL FALLBACK"} · $0</span>
+          <span className="datasetBadge">{apiLive ? "API LIVE" : "LOCAL FALLBACK"} · 14-DAY REPLAY</span>
         </section>
 
         <section className="metrics">
-          <article><div><span>{labels.revenue}</span><b>{language === "zh" ? "14 天范围" : "14-day scope"}</b></div><strong>${(summary.revenue / 1000).toFixed(1)}K</strong><small>{market} · {device}</small><div className="spark"><i/><i/><i/><i/><i/><i/><i/></div></article>
+          <article><div><span>{language === "zh" ? "可挽回收入" : "Revenue protected"}</span><b>{language === "zh" ? "每日风险" : "DAILY RISK"}</b></div><strong>${(revenueProtected / 1000).toFixed(1)}K/day</strong><small>{language === "zh" ? "经人工审批后执行处置" : "Actions remain human-approved"}</small><div className="spark"><i/><i/><i/><i/><i/><i/><i/></div></article>
           <article><div><span>{labels.anomaly}</span><b className="warn">{visibleAnomalies.length} {language === "zh" ? "个" : "in scope"}</b></div><strong>{String(visibleAnomalies.length).padStart(2, "0")}</strong><small>{language === "zh" ? "根据历史基线自动发现" : "Automatically found from historical baselines"}</small><div className="bars"><i/><i/><i/><i/><i/><i/><i/></div></article>
-          <article><div><span>{labels.ctrCvr}</span><b>{language === "zh" ? "实时计算" : "Live calculation"}</b></div><strong>{summary.ctr.toFixed(2)}%</strong><small>CVR {summary.cvr.toFixed(2)}%</small><div className="line" /></article>
-          <article><div><span>{labels.roas}</span><b>{language === "zh" ? "收入 ÷ 花费" : "Revenue ÷ spend"}</b></div><strong>{summary.roas.toFixed(2)}×</strong><small>${(summary.spend / 1000).toFixed(1)}K {language === "zh" ? "花费" : "spend"}</small><div className="donut"><span>{Math.min(Math.round(summary.roas * 25), 99)}</span></div></article>
+          <article><div><span>{language === "zh" ? "调查耗时" : "Investigation time"}</span><b>{language === "zh" ? "内部提效" : "OPS ROI"}</b></div><strong>4h → 3m</strong><small>{language === "zh" ? "模拟人工排查基线 → Agent 演示" : "Manual baseline → agent demo"}</small><div className="line" /></article>
+          <article><div><span>{labels.roas}</span><b>{language === "zh" ? "筛选联动" : "FILTERED"}</b></div><strong>{summary.roas.toFixed(2)}×</strong><small>{summary.ctr.toFixed(2)}% CTR · {summary.cvr.toFixed(2)}% CVR</small><div className="donut"><span>{Math.min(Math.round(summary.roas * 25), 99)}</span></div></article>
         </section>
 
         <section className="panel trendPanel">
@@ -190,7 +255,20 @@ export default function Home() {
           </div>
 
           <div className="panel run">
-            <div className="panelHead"><div><span className="liveDot">{language === "zh" ? "实时" : "LIVE"}</span><h2>{labels.investigation}</h2><p>{incident.id} · {language === "zh" ? "自动分析进行中" : "Autonomous analysis in progress"}</p></div><span className="elapsed">03:42 {language === "zh" ? "已用时" : "elapsed"}</span></div>
+            <div className="panelHead">
+              <div>
+                <span className="liveDot">{incident.id === "INC-2407" ? "WORKERS AI · REAL LLM" : (language === "zh" ? "确定性回放" : "DETERMINISTIC REPLAY")}</span>
+                <h2>{labels.investigation}</h2>
+                <p>{incident.id} · {incident.id === "INC-2407" ? (language === "zh" ? "真实模型 + 真实工具结果" : "Real model + computed tool results") : (language === "zh" ? "规则调查回放" : "Rule-based investigation replay")}</p>
+              </div>
+              {incident.id === "INC-2407" ? (
+                <button className="liveRunButton" disabled={liveRunStatus === "running"} onClick={runLiveInvestigation}>
+                  {liveRunStatus === "running"
+                    ? (language === "zh" ? "LLM 推理中…" : "LLM reasoning…")
+                    : (language === "zh" ? "▶ 运行真实 AI 调查" : "▶ Run live AI")}
+                </button>
+              ) : <span className="elapsed">14-DAY REPLAY</span>}
+            </div>
             <div className="progress"><i style={{ width: `${progress}%` }} /></div>
             <div className="timeline">
               {steps.map(([n, title, copy, state]) => (
@@ -201,13 +279,25 @@ export default function Home() {
               <div><span>{approved ? "✓" : "!"}</span><div><strong>{approved ? (language === "zh" ? "操作已批准" : "Action approved") : labels.approval}</strong><p>{approved ? (language === "zh" ? "模拟操作已排队，恢复监控窗口已启动。" : "Simulated action queued. Monitoring window started.") : `${incident.action}. ${language === "zh" ? "预计恢复" : "Estimated recovery"}: $${incident.estimatedImpact.toLocaleString()}/day.`}</p></div></div>
               {!approved && <div className="approvalActions"><button disabled={approvalStatus === "saving"} onClick={approveAction}>{approvalStatus === "saving" ? (language === "zh" ? "保存中…" : "Saving…") : labels.approve}</button><button onClick={() => setShowEvidence((value) => !value)}>{showEvidence ? labels.hideEvidence : labels.evidence}</button></div>}
             </div>
+            {liveRunStatus === "error" && <div className="runError">{language === "zh" ? "Workers AI 本次请求失败或额度暂不可用，请重试。" : "Workers AI request failed or quota is temporarily unavailable. Retry."}</div>}
+            {liveRun && incident.id === "INC-2407" && (
+              <div className="llmConclusion">
+                <div><strong>{language === "zh" ? "LLM 结论" : "LLM conclusion"}</strong><span>{Math.round(liveRun.conclusion.confidence * 100)}% confidence</span></div>
+                <p>{liveRun.conclusion.hypothesis}</p>
+                <small>{liveRun.conclusion.recommendedAction} · {liveRun.model}</small>
+              </div>
+            )}
             {showEvidence && (
               <div className="evidenceDrawer">
-                <div className="evidenceTitle"><strong>Agent tool trace</strong><span>{toolResults.length}/{toolResults.length} tools succeeded</span></div>
-                {toolResults.map((result, index) => (
-                  <div className="toolCall" key={result.tool}>
+                <div className="evidenceTitle"><strong>{liveRun ? "Live LLM decision + tool trace" : "Replay tool trace"}</strong><span>{displayedToolResults.length}/{displayedToolResults.length} tools succeeded</span></div>
+                {displayedToolResults.map((result, index) => (
+                  <div className="toolCall" key={`${result.tool}-${index}`}>
                     <span>{String(index + 1).padStart(2, "0")}</span>
-                    <div><strong>{result.tool}</strong><small>{result.purpose}</small><p>{result.result}</p></div>
+                    <div>
+                      <strong>{result.tool}</strong>
+                      <small>{liveRun?.trace[index]?.decision ?? result.purpose}</small>
+                      <p>{result.result}</p>
+                    </div>
                     <em>✓ {result.source}</em>
                   </div>
                 ))}
@@ -216,20 +306,66 @@ export default function Home() {
           </div>
         </section>
 
+        <section className="panel replayLab">
+          <div className="panelHead">
+            <div>
+              <span className="liveDot">UNSEEN INPUT TEST</span>
+              <h2>{language === "zh" ? "注入一个新异常，让检测器现场扫描" : "Inject a new anomaly and scan it live"}</h2>
+              <p>{language === "zh" ? "修改内存中的 14 天数据副本；不是回放预设 incident，也不会改动线上数据。" : "Mutates an in-memory copy of the 14-day table; no preset incident and no persistent data change."}</p>
+            </div>
+            <span className="datasetBadge">POST /api/anomalies/scan</span>
+          </div>
+          <div className="labControls">
+            <label>Market
+              <select value={injection.market} onChange={(event) => setInjection({ ...injection, market: event.target.value as Market })}>
+                <option>US</option><option>DE</option><option>UK</option>
+              </select>
+            </label>
+            <label>Device
+              <select value={injection.device} onChange={(event) => setInjection({ ...injection, device: event.target.value as Device })}>
+                <option>Mobile</option><option>Desktop</option>
+              </select>
+            </label>
+            <label>Metric
+              <select value={injection.metric} onChange={(event) => {
+                const metric = event.target.value as InjectionRequest["metric"];
+                setInjection({ ...injection, metric, deltaPct: metric === "Spend" ? 40 : -28 });
+              }}>
+                <option>CTR</option><option>Spend</option><option>Revenue</option>
+              </select>
+            </label>
+            <label>Injected change
+              <input type="number" min="-80" max="100" value={injection.deltaPct} onChange={(event) => setInjection({ ...injection, deltaPct: Number(event.target.value) })} />
+              <span>%</span>
+            </label>
+            <button disabled={scanStatus === "running"} onClick={scanInjectedAnomaly}>
+              {scanStatus === "running" ? (language === "zh" ? "扫描 84 行…" : "Scanning 84 rows…") : (language === "zh" ? "注入并扫描 →" : "Inject & scan →")}
+            </button>
+          </div>
+          {scanResult && (
+            <div className={`scanResult ${scanResult.detected ? "found" : "clear"}`}>
+              <strong>{scanResult.detected ? (language === "zh" ? "✓ 检测到未预设异常" : "✓ Unseen anomaly detected") : (language === "zh" ? "未越过当前阈值" : "Below current threshold")}</strong>
+              <p>{scanResult.rowsScanned} rows scanned · {injection.market} × {injection.device} × {injection.metric} · injected {injection.deltaPct > 0 ? "+" : ""}{injection.deltaPct}%</p>
+              {scanResult.anomaly && <small>{scanResult.anomaly.id} · observed {scanResult.anomaly.delta}% · {Math.abs(scanResult.anomaly.detector?.zScore ?? 0).toFixed(1)}σ · changepoint {scanResult.anomaly.detector?.changePoint}</small>}
+            </div>
+          )}
+          {scanStatus === "error" && <div className="runError">{language === "zh" ? "扫描失败，请重试。" : "Scan failed. Retry."}</div>}
+        </section>
+
         <section className="bottomGrid">
           <div className="panel ask">
             <div className="panelHead"><div><h2>{labels.ask}</h2><p>{labels.askHint}</p></div><span className="aiTag">✦ AI ANALYST</span></div>
             <div className="queryBox"><input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && askAgent()} placeholder={language === "zh" ? "为什么美国移动端收入昨天下降？" : "Why did US mobile revenue decline yesterday?"} /><button onClick={askAgent}>{language === "zh" ? "提问 →" : "Ask →"}</button></div>
-            {answer ? <div className="answer"><strong>Finding · deterministic demo mode</strong><p>{answer}</p><small>Sources: filtered campaign metrics · anomaly ground truth · approved runbook</small></div> :
+            {answer ? <div className="answer"><strong>Finding · grounded 14-day replay</strong><p>{answer}</p><small>Sources: filtered campaign metrics · detected incident · approved runbook</small></div> :
               <div className="suggestions"><span>Try asking:</span><button onClick={() => setQuery("Compare CTR by market")}>Compare CTR by market</button><button onClick={() => setQuery("Show costly anomalies")}>Show costly anomalies</button></div>}
           </div>
           <div className="panel evaluation">
-            <div className="panelHead"><div><h2>{labels.quality}</h2><p>{language === "zh" ? "最近30天 · 186次已完成运行" : "Last 30 days · 186 completed runs"}</p></div><button>{language === "zh" ? "评估套件 →" : "Evaluation suite →"}</button></div>
+            <div className="panelHead"><div><h2>{labels.quality}</h2><p>{language === "zh" ? "诚实的 14 天回放说明，不把 N=3 包装成满分模型" : "Honest 14-day replay, not a 100% claim on N=3"}</p></div><button>{language === "zh" ? "评估说明 →" : "Evaluation notes →"}</button></div>
             <div className="quality">
-              <div><strong>{(detectorQuality.precision * 100).toFixed(0)}%</strong><span>Detector precision</span><small>{detectorQuality.falsePositives} false positive</small></div>
-              <div><strong>{(detectorQuality.recall * 100).toFixed(0)}%</strong><span>Detector recall</span><small>{detectorQuality.truePositives}/3 found</small></div>
-              <div><strong>{(detectorQuality.f1 * 100).toFixed(0)}%</strong><span>Detector F1 score</span><small>Ground-truth suite</small></div>
-              <div><strong>$0.00</strong><span>Cost per demo run</span><small className="down">No paid API</small></div>
+              <div><strong>{replay.knownIncidentsFound}</strong><span>Known incidents found</span><small>at declared thresholds</small></div>
+              <div><strong>{replay.unaffectedSegmentsAlerted}</strong><span>Unaffected segments alerted</span><small>in this replay</small></div>
+              <div><strong>-15%</strong><span>CTR alert threshold</span><small>trade-off documented</small></div>
+              <div><strong>$0 key</strong><span>Paid API key required</span><small className="down">Workers AI free allocation</small></div>
             </div>
           </div>
         </section>
@@ -251,15 +387,15 @@ function ModuleView({
   const titles = language === "zh"
     ? { incidents: "异常中心", runs: "Agent运行记录", knowledge: "知识库", evaluations: "评估中心" }
     : { incidents: "Incident center", runs: "Agent runs", knowledge: "Knowledge base", evaluations: "Evaluations" };
-  const quality = evaluateDetector(detectedAnomalies);
+  const quality = replaySummary(detectedAnomalies);
   const [knowledgeQuery, setKnowledgeQuery] = useState("");
   const knowledgeHits = useMemo(() => searchKnowledge(knowledgeQuery, 6), [knowledgeQuery]);
 
   return (
     <section className="modulePage">
       <div className="moduleHero">
-        <div><p className="eyebrow">ADPILOT WORKSPACE</p><h2>{titles[view]}</h2><p>{language === "zh" ? "使用同一套模拟数据、真实API和标准答案测试集。" : "Powered by the same simulated data, real APIs, and ground-truth suite."}</p></div>
-        <span>● API LIVE · $0</span>
+        <div><p className="eyebrow">ADPILOT WORKSPACE</p><h2>{titles[view]}</h2><p>{language === "zh" ? "14 天统计检测回放；INC-2407 使用真实 Workers AI 推理。" : "14-day statistical replay; INC-2407 uses live Workers AI inference."}</p></div>
+        <span>● WORKERS AI · FREE ALLOCATION</span>
       </div>
 
       {view === "incidents" && <div className="moduleGrid">
@@ -292,11 +428,11 @@ function ModuleView({
       </>}
 
       {view === "evaluations" && <div className="evaluationPage">
-        <article><strong>{(quality.precision * 100).toFixed(0)}%</strong><span>Precision / 精确率</span></article>
-        <article><strong>{(quality.recall * 100).toFixed(0)}%</strong><span>Recall / 召回率</span></article>
-        <article><strong>{(quality.f1 * 100).toFixed(0)}%</strong><span>F1 score</span></article>
-        <article><strong>$0.00</strong><span>Demo API cost / 演示成本</span></article>
-        <div><h3>Ground-truth suite</h3><p>3 standard incidents · 3 detected · 0 false positives</p><code>GET /api/anomalies</code></div>
+        <article><strong>{quality.knownIncidentsFound}</strong><span>Known incidents found / 已知事件</span></article>
+        <article><strong>{quality.unaffectedSegmentsAlerted}</strong><span>Unaffected alerts / 未受影响分组告警</span></article>
+        <article><strong>-15%</strong><span>CTR threshold / 告警阈值</span></article>
+        <article><strong>10K/day</strong><span>Free Workers AI neurons</span></article>
+        <div><h3>14-day replay disclosure</h3><p>{quality.threshold}. {quality.tradeoff}</p><code>GET /api/evaluations</code></div>
       </div>}
     </section>
   );

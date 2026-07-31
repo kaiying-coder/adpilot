@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { detectedAnomalies, evaluateDetector } from "../../data";
+import { detectedAnomalies, replaySummary } from "../../data";
 
 export async function GET() {
   return NextResponse.json({
     anomalies: detectedAnomalies,
-    evaluation: evaluateDetector(detectedAnomalies),
+    replay: replaySummary(detectedAnomalies),
     detector: {
-      version: "baseline-rules-v1",
-      methods: ["historical baseline", "relative delta", "leading-indicator deduplication"],
+      version: "replay-detector-v2",
+      methods: ["z-score with operational variance floor", "changepoint", "relative delta", "leading-indicator deduplication"],
     },
   });
 }
