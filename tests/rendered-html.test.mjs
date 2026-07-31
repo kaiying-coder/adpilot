@@ -4,7 +4,32 @@ import test from "node:test";
 const workerUrl = new URL("../dist/server/index.js", import.meta.url);
 workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
 const { default: worker } = await import(workerUrl.href);
-const env = { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
+let aiCall = 0;
+const aiDecisions = [
+  {
+    plan: [
+      { tool: "query_metrics", args: { market: "US", device: "Mobile", window: 14 }, rationale: "Measure the affected segment." },
+      { tool: "search_runbook", args: { query: "CTR latency release rollback" }, rationale: "Ground the investigation." },
+      { tool: "get_similar_incidents", args: {}, rationale: "Compare prior incidents." },
+    ],
+  },
+  {
+    hypothesis: "The mobile release caused a latency regression and CTR decline.",
+    evidence: ["Computed metric shift", "Approved runbook", "Similar incident"],
+    recommendedAction: "Request approval to roll back v3.18.4.",
+    confidence: 0.91,
+    rationale: "Three independent observations support the same cause.",
+  },
+];
+const env = {
+  ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
+  AI: {
+    run: async () => ({
+      response: JSON.stringify(aiDecisions[Math.min(aiCall++, aiDecisions.length - 1)]),
+      usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 },
+    }),
+  },
+};
 const context = { waitUntil() {}, passThroughOnException() {} };
 
 function request(path, init) {
@@ -33,13 +58,45 @@ test("metrics API filters the simulated dataset", async () => {
   assert.equal(body.trend.length, 14);
 });
 
-test("anomaly detector matches all ground-truth cases", async () => {
+test("anomaly detector reports an honest replay summary", async () => {
   const response = await request("/api/anomalies");
   const body = await response.json();
   assert.equal(body.anomalies.length, 3);
-  assert.equal(body.evaluation.precision, 1);
-  assert.equal(body.evaluation.recall, 1);
-  assert.equal(body.evaluation.falsePositives, 0);
+  assert.equal(body.replay.knownIncidentsFound, "3/3");
+  assert.equal(body.replay.unaffectedSegmentsAlerted, 0);
+  assert.match(body.replay.tradeoff, /threshold/i);
+  assert.ok(Math.abs(body.anomalies[0].detector.zScore) > 3);
+  assert.equal(Math.round(body.anomalies[0].detector.latencyDeltaMs), 920);
+});
+
+test("scanner detects a newly injected, non-preset segment", async () => {
+  const response = await request("/api/anomalies/scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ market: "DE", device: "Mobile", metric: "CTR", deltaPct: -30 }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.detected, true);
+  assert.equal(body.anomaly.market, "DE");
+  assert.equal(body.anomaly.device, "Mobile");
+  assert.equal(body.anomaly.metric, "CTR");
+});
+
+test("INC-2407 runs a live Workers AI tool loop", async () => {
+  aiCall = 0;
+  const response = await request("/api/investigations/INC-2407/run", { method: "POST" });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mode, "workers-ai-live");
+  assert.equal(body.trace.length, 3);
+  assert.deepEqual(body.trace.map((item) => item.request.tool), [
+    "query_metrics",
+    "search_runbook",
+    "get_similar_incidents",
+  ]);
+  assert.equal(body.conclusion.confidence, 0.91);
+  assert.match(body.guardrail, /approval/i);
 });
 
 test("knowledge API returns ranked citations", async () => {

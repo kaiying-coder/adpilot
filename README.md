@@ -8,12 +8,13 @@
 
 AdPilot is a portfolio-grade internal productivity tool inspired by advertising
 monetization workflows. It detects anomalies in a reproducible campaign dataset,
-investigates them with a tool-using agent, retrieves approved runbooks and
+investigates `INC-2407` with a live Workers AI tool loop, retrieves approved runbooks and
 historical cases, requires human approval for risky actions, and evaluates every
-stage against a ground-truth suite.
+stage with an explicit 14-day replay disclosure.
 
-> All advertising data and response actions are simulated. The public demo uses
-> no paid model or external advertising API.
+> All advertising data and response actions are simulated. `INC-2407` uses real
+> inference through Cloudflare Workers AI; it needs no paid API key and is designed
+> to stay within Cloudflare's daily free allocation during portfolio demos.
 
 ## Live demo
 
@@ -38,12 +39,12 @@ The demo supports Chinese and English. Three seeded incidents are available:
 
 | Job signal | Evidence in AdPilot |
 | --- | --- |
-| AI coding and software engineering | Typed React/TypeScript product, six REST routes, automated tests |
+| AI coding and software engineering | Typed React/TypeScript product, eight REST routes, automated tests |
 | Internal AI productivity tooling | Replaces manual alert triage, evidence collection, and incident reporting |
 | Product sense | Prioritized incident queue, explainable evidence, human approval, recovery monitoring |
-| Agent automation | Auditable state machine and five constrained analysis tools |
+| Agent automation | Live Llama tool loop for INC-2407 plus an auditable approval state machine |
 | RAG | Approved runbooks and historical cases with ranked retrieval and citations |
-| Evaluation | Ground-truth anomaly suite, precision/recall/F1, tool success, latency, and cost |
+| Evaluation | Honest 14-day replay thresholds, sensitivity trade-off, live tool evidence, and cost boundary |
 
 This is intentionally one coherent product rather than three unrelated demos:
 the knowledge base grounds the agent, the agent automates the investigation,
@@ -56,7 +57,7 @@ flowchart LR
   A[Campaign metrics] --> B[Anomaly detector]
   B --> C[Incident]
   C --> D[Agent plan]
-  D --> E[Metric tools]
+  D --> E[Workers AI chooses tools]
   D --> F[RAG knowledge search]
   E --> G[Verified root cause]
   F --> G
@@ -74,10 +75,10 @@ flowchart TB
   UI[Next.js product UI] --> API[AdPilot REST API]
   API --> DATA[Deterministic ad dataset]
   API --> DETECTOR[Baseline anomaly detector]
-  API --> AGENT[Investigation state machine]
+  API --> AGENT[Workers AI agent loop]
   AGENT --> TOOLS[Typed analysis tools]
   AGENT --> RAG[Weighted knowledge retrieval]
-  API --> EVAL[Ground-truth evaluation suite]
+  API --> EVAL[14-day replay disclosure]
 ```
 
 The browser normally reads through the API. A local deterministic fallback keeps
@@ -85,15 +86,18 @@ the demo usable when an API request fails.
 
 ## API
 
-The API uses deterministic simulated data and is free to call. It does not
-require an API key or a paid model. See the complete
+The API uses simulated advertising data. Statistical scanning is deterministic;
+`INC-2407` calls a real Workers AI model through a binding and does not require
+the visitor to supply an API key. See the complete
 [OpenAPI specification](./openapi.yaml).
 
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/metrics?market=US&device=Mobile` | Filtered metrics, summary, and trend |
 | `GET /api/anomalies` | Detected incidents and detector quality |
+| `POST /api/anomalies/scan` | Inject and scan a new, non-preset anomaly |
 | `GET /api/investigations/:id` | Agent workflow and tool trace |
+| `POST /api/investigations/INC-2407/run` | Live Workers AI tool loop |
 | `POST /api/investigations/:id/approve` | Explicit simulated approval |
 | `GET /api/knowledge?q=latency` | Ranked knowledge hits with citations |
 | `GET /api/evaluations` | Detector, retrieval, agent, and cost metrics |
@@ -134,7 +138,9 @@ The suite verifies:
 
 - product shell rendering;
 - filtered metrics API output;
-- 3/3 ground-truth anomaly detection with zero false positives;
+- declared-threshold replay finding 3/3 known incidents;
+- new anomaly injection and full-table scanning;
+- a mocked end-to-end Workers AI tool loop for deterministic CI;
 - ranked knowledge retrieval with citations;
 - explicit approval guardrails and simulated execution.
 
@@ -145,30 +151,31 @@ The suite verifies:
 - High-risk actions require explicit approval.
 - Agent conclusions expose their data and knowledge sources.
 - Retrieval returns citations and refuses unsupported results.
-- The deterministic mode costs `$0` per run.
+- The live model uses the Workers AI binding and Cloudflare's free daily allocation;
+  no paid third-party API key is stored or exposed.
 
 ## Tech stack
 
 - TypeScript, React, Next.js-compatible Vinext runtime
-- Cloudflare Worker-compatible API routes
-- Deterministic campaign data and statistical baseline rules
-- Tool-based agent workflow with an auditable state machine
+- Cloudflare Workers + Workers AI (`@cf/meta/llama-3.1-8b-instruct-fp8`)
+- Statistical z-score/changepoint detection over 14-day campaign data
+- LLM-selected tools with computed observations and a concise decision trace
 - Local weighted retrieval over approved runbooks and historical cases
 - Node test runner for end-to-end API verification
 
 ## Interview demo
 
-1. Filter to **US / Mobile** and inspect the revenue and CTR trend.
-2. Open **Incidents** and select `INC-2407`.
-3. Review the agent tool trace and cited runbook.
-4. Approve the simulated rollback.
-5. Open **Evaluations** and explain precision, recall, F1, and zero paid API cost.
+1. Select `INC-2407` and click **Run live AI investigation**.
+2. Point to each model-selected tool and the computed `σ` / latency observations.
+3. Stop at the approval gate and explain why rollback is not automatic.
+4. Close with the simulated `$18.2K/day` revenue impact and `4h → 3m` investigation story.
+5. Inject a new anomaly to show the detector is not replaying only three canned cards.
 
 ## Roadmap
 
 - Optional vector embeddings and reranking behind the same retrieval interface.
 - Durable multi-user incident history.
-- Optional bring-your-own-model adapter.
+- Evaluation against a larger labeled replay set.
 - Real advertising connectors behind read-only permissions.
 
 ## License

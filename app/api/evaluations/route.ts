@@ -1,28 +1,23 @@
 import { NextResponse } from "next/server";
-import { detectedAnomalies, evaluateDetector } from "../../data";
+import { detectedAnomalies, replaySummary } from "../../data";
 
 export async function GET() {
-  const detector = evaluateDetector(detectedAnomalies);
+  const replay = replaySummary(detectedAnomalies);
   return NextResponse.json({
-    dataset: "adpilot-ground-truth-v1",
-    cases: 3,
-    detector: {
-      precision: detector.precision,
-      recall: detector.recall,
-      f1: detector.f1,
-      truePositives: detector.truePositives,
-      falsePositives: detector.falsePositives,
-    },
+    dataset: "adpilot-14-day-replay-v2",
+    detector: replay,
     retrieval: {
       corpusSize: 6,
       testQueries: 3,
-      citationHitRate: 1,
+      citationChecksPassed: "3/3",
     },
     agent: {
-      completedRuns: 3,
-      toolSuccessRate: 1,
-      approvalGuardrailRate: 1,
-      paidApiCostUsd: 0,
+      liveLlmScope: "INC-2407",
+      model: "@cf/meta/llama-3.1-8b-instruct-fast",
+      requiredTools: ["query_metrics", "search_runbook", "get_similar_incidents"],
+      approvalGuardrail: "required",
+      paidApiKeyRequired: false,
+      workersAiFreeAllocation: "10,000 neurons/day",
     },
   });
 }

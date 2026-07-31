@@ -26,6 +26,21 @@ export type DetectedAnomaly = {
   evidence: string;
   action: string;
   estimatedImpact: number;
+  detector?: {
+    baseline: number;
+    current: number;
+    zScore: number;
+    changePoint: string;
+    latencyDeltaMs?: number;
+    method: string;
+  };
+};
+
+export type InjectionRequest = {
+  market: Market;
+  device: Device;
+  metric: "CTR" | "Spend" | "Revenue";
+  deltaPct: number;
 };
 
 const dates = [
@@ -123,13 +138,52 @@ function percentDelta(current: number, baseline: number) {
   return baseline ? ((current - baseline) / baseline) * 100 : 0;
 }
 
+function standardDeviation(values: number[]) {
+  if (values.length < 2) return 0;
+  const mean = average(values);
+  return Math.sqrt(average(values.map((value) => (value - mean) ** 2)));
+}
+
+function ctr(row: AdMetric) {
+  return row.impressions ? row.clicks / row.impressions : 0;
+}
+
+export function analyzeCtrShift(series: AdMetric[]) {
+  const recent = series.slice(-3);
+  const historical = series.slice(0, -3);
+  const baseline = historical.reduce((sum, row) => sum + row.clicks, 0) /
+    historical.reduce((sum, row) => sum + row.impressions, 0);
+  const current = recent.reduce((sum, row) => sum + row.clicks, 0) /
+    recent.reduce((sum, row) => sum + row.impressions, 0);
+  const observedSigma = standardDeviation(historical.map(ctr));
+  // A 5% operational variance floor prevents tiny rounding noise from
+  // producing an exaggerated z-score on high-volume simulated traffic.
+  const operationalSigma = Math.max(observedSigma, baseline * 0.05);
+  const baselineLatency = average(historical.slice(-7).map((row) => row.latencyMs));
+  const recentLatency = average(recent.map((row) => row.latencyMs));
+  return {
+    baseline,
+    current,
+    delta: percentDelta(current, baseline),
+    zScore: operationalSigma ? (current - baseline) / operationalSigma : 0,
+    changePoint: recent[0]?.date ?? series.at(-1)?.date ?? "unknown",
+    latencyDeltaMs: recentLatency - baselineLatency,
+  };
+}
+
 /**
  * Deterministic anomaly detector. It never reads anomalyGroundTruth to decide
  * whether an event happened; ground truth is used only after detection to
  * attach demo metadata and calculate evaluation quality.
  */
 export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
-  const detections: Array<{ market: Market; device: Device; metric: "CTR" | "Spend" | "Revenue"; delta: number }> = [];
+  const detections: Array<{
+    market: Market;
+    device: Device;
+    metric: "CTR" | "Spend" | "Revenue";
+    delta: number;
+    detector: NonNullable<DetectedAnomaly["detector"]>;
+  }> = [];
 
   for (const market of markets) {
     for (const device of devices) {
@@ -138,11 +192,8 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
       const historical = series.slice(0, -3);
       if (historical.length < 7 || recent.length === 0) continue;
 
-      const baselineCtr = historical.reduce((sum, row) => sum + row.clicks, 0) /
-        historical.reduce((sum, row) => sum + row.impressions, 0);
-      const recentCtr = recent.reduce((sum, row) => sum + row.clicks, 0) /
-        recent.reduce((sum, row) => sum + row.impressions, 0);
-      const ctrDelta = percentDelta(recentCtr, baselineCtr);
+      const ctrShift = analyzeCtrShift(series);
+      const ctrDelta = ctrShift.delta;
 
       const latestSpend = series.at(-1)?.spend ?? 0;
       const spendBaseline = average(series.slice(-8, -1).map((row) => row.spend));
@@ -155,11 +206,52 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
       // Prioritize the leading indicator so one incident does not create
       // several correlated alerts for the same market-device pair.
       if (ctrDelta <= -15) {
-        detections.push({ market, device, metric: "CTR", delta: ctrDelta });
+        detections.push({
+          market,
+          device,
+          metric: "CTR",
+          delta: ctrDelta,
+          detector: {
+            baseline: ctrShift.baseline,
+            current: ctrShift.current,
+            zScore: ctrShift.zScore,
+            changePoint: ctrShift.changePoint,
+            latencyDeltaMs: ctrShift.latencyDeltaMs,
+            method: "11-day baseline + 3-day changepoint + 5% variance floor",
+          },
+        });
       } else if (spendDelta >= 24.5) {
-        detections.push({ market, device, metric: "Spend", delta: spendDelta });
+        detections.push({
+          market,
+          device,
+          metric: "Spend",
+          delta: spendDelta,
+          detector: {
+            baseline: spendBaseline,
+            current: latestSpend,
+            zScore: standardDeviation(series.slice(-8, -1).map((row) => row.spend))
+              ? (latestSpend - spendBaseline) / standardDeviation(series.slice(-8, -1).map((row) => row.spend))
+              : 0,
+            changePoint: series.at(-1)?.date ?? "unknown",
+            method: "7-day rolling baseline + relative change threshold",
+          },
+        });
       } else if (revenueDelta <= -15) {
-        detections.push({ market, device, metric: "Revenue", delta: revenueDelta });
+        detections.push({
+          market,
+          device,
+          metric: "Revenue",
+          delta: revenueDelta,
+          detector: {
+            baseline: revenueBaseline,
+            current: lowestRecentRevenue,
+            zScore: standardDeviation(historical.slice(-7).map((row) => row.revenue))
+              ? (lowestRecentRevenue - revenueBaseline) / standardDeviation(historical.slice(-7).map((row) => row.revenue))
+              : 0,
+            changePoint: recent.find((row) => row.revenue === lowestRecentRevenue)?.date ?? "unknown",
+            method: "7-day baseline + 3-day minimum changepoint",
+          },
+        });
       }
     }
   }
@@ -173,7 +265,14 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
     );
 
     return known
-      ? { ...known, delta: Number(detection.delta.toFixed(1)) }
+      ? {
+          ...known,
+          delta: Number(detection.delta.toFixed(1)),
+          evidence: detection.metric === "CTR"
+            ? `CTR shifted ${Math.abs(detection.detector.zScore).toFixed(1)}σ while mobile latency rose ${Math.round(detection.detector.latencyDeltaMs ?? 0)}ms`
+            : known.evidence,
+          detector: detection.detector,
+        }
       : {
           id: `INC-AUTO-${index + 1}`,
           title: `${detection.market} · ${detection.device} ${detection.metric} anomaly`,
@@ -190,7 +289,38 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
 
 export const detectedAnomalies = detectAnomalies(adMetrics);
 
-export function evaluateDetector(
+export function injectAnomaly(rows: AdMetric[], request: InjectionRequest) {
+  const factor = 1 + request.deltaPct / 100;
+  const scopedIndexes = rows
+    .map((row, index) => ({ row, index }))
+    .filter(({ row }) => row.market === request.market && row.device === request.device)
+    .slice(-3)
+    .map(({ index }) => index);
+
+  return rows.map((row, index) => {
+    if (!scopedIndexes.includes(index)) return { ...row };
+    if (request.metric === "CTR") {
+      const previousCvr = row.clicks ? row.conversions / row.clicks : 0;
+      const clicks = Math.max(1, Math.round(row.clicks * factor));
+      return { ...row, clicks, conversions: Math.round(clicks * previousCvr) };
+    }
+    if (request.metric === "Spend") return { ...row, spend: Math.round(row.spend * factor) };
+    return { ...row, revenue: Math.round(row.revenue * factor) };
+  });
+}
+
+export function replaySummary(detected: DetectedAnomaly[]) {
+  const quality = compareReplayResults(detected);
+  return {
+    window: "14-day replay",
+    threshold: "CTR ≤ -15%, spend ≥ +24.5%, revenue ≤ -15%",
+    knownIncidentsFound: `${quality.truePositives}/${anomalyGroundTruth.length}`,
+    unaffectedSegmentsAlerted: quality.falsePositives,
+    tradeoff: "Relaxing the CTR threshold from -15% to -12% increases sensitivity but promotes normal mobile volatility to the watchlist.",
+  };
+}
+
+function compareReplayResults(
   detected: DetectedAnomaly[],
   expected: DetectedAnomaly[] = anomalyGroundTruth
 ) {
@@ -198,10 +328,7 @@ export function evaluateDetector(
   const expectedKeys = new Set(expected.map(key));
   const detectedKeys = new Set(detected.map(key));
   const truePositives = [...detectedKeys].filter((item) => expectedKeys.has(item)).length;
-  const precision = detectedKeys.size ? truePositives / detectedKeys.size : 0;
-  const recall = expectedKeys.size ? truePositives / expectedKeys.size : 0;
-  const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
-  return { truePositives, falsePositives: detectedKeys.size - truePositives, precision, recall, f1 };
+  return { truePositives, falsePositives: detectedKeys.size - truePositives };
 }
 
 export function summarize(rows: AdMetric[]) {
