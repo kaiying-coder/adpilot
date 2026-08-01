@@ -123,6 +123,7 @@ test("INC-2407 runs a live Workers AI tool loop", async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.mode, "workers-ai-live");
+  assert.equal(body.language, "zh");
   assert.equal(body.trace.length, 4);
   assert.deepEqual(body.trace.map((item) => item.request.tool), [
     "query_metrics",
@@ -130,8 +131,30 @@ test("INC-2407 runs a live Workers AI tool loop", async () => {
     "search_runbook",
     "get_similar_incidents",
   ]);
+  assert.match(body.trace[0].observation.result, /延迟|日收入/);
   assert.equal(body.conclusion.confidence, 0.91);
   assert.match(body.guardrail, /approval/i);
+});
+
+test("live investigation supports language-matched output", async () => {
+  aiCall = 0;
+  const clientHeaders = { "content-type": "application/json" };
+  const zhResponse = await request("/api/investigations/INC-2407/run", {
+    method: "POST",
+    headers: clientHeaders,
+    body: JSON.stringify({ language: "zh" }),
+  });
+  assert.equal(zhResponse.status, 200);
+  assert.equal((await zhResponse.json()).language, "zh");
+  const enResponse = await request("/api/investigations/INC-2407/run", {
+    method: "POST",
+    headers: clientHeaders,
+    body: JSON.stringify({ language: "en" }),
+  });
+  assert.equal(enResponse.status, 200);
+  const enBody = await enResponse.json();
+  assert.equal(enBody.language, "en");
+  assert.match(enBody.trace[0].observation.result, /latency|daily revenue/);
 });
 
 test("public live runs reuse a short cache instead of spending AI quota repeatedly", async () => {

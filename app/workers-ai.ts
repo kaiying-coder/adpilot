@@ -52,11 +52,12 @@ function parseJSON<T>(raw: string): T {
   return JSON.parse(cleaned) as T;
 }
 
-function planningPrompt(incident: DetectedAnomaly, correction: string) {
+function planningPrompt(incident: DetectedAnomaly, correction: string, language: "zh" | "en") {
   return `
 You are AdPilot, an advertising monetization incident investigator.
 Create a short read-only investigation plan. Return ONLY one valid JSON object.
 Do not reveal private chain-of-thought; give only short operational rationales.
+Write every rationale in ${language === "zh" ? "Simplified Chinese" : "English"}.
 
 Incident:
 ${JSON.stringify({
@@ -83,11 +84,12 @@ ${correction ? `Correction from the previous attempt: ${correction}` : ""}
 `.trim();
 }
 
-function conclusionPrompt(incident: DetectedAnomaly, trace: LiveAgentTrace[], correction: string) {
+function conclusionPrompt(incident: DetectedAnomaly, trace: LiveAgentTrace[], correction: string, language: "zh" | "en") {
   const observations = trace.map((item) => `${item.request.tool}: ${item.observation.result}`).join("\n");
   return `
 You are AdPilot. Produce the incident conclusion from the verified tool observations below.
 Return ONLY one valid JSON object. Do not reveal private chain-of-thought.
+Write hypothesis, evidence, recommendedAction, and rationale in ${language === "zh" ? "Simplified Chinese" : "English"}.
 
 Incident: ${JSON.stringify({ id: incident.id, estimatedImpactUsdPerDay: incident.estimatedImpact })}
 Verified observations:
@@ -102,7 +104,8 @@ ${correction ? `Correction from the previous attempt: ${correction}` : ""}
 
 export async function runWorkersAIInvestigation(
   incident: DetectedAnomaly,
-  ai: WorkersAIBinding
+  ai: WorkersAIBinding,
+  language: "zh" | "en" = "zh"
 ) {
   const trace: LiveAgentTrace[] = [];
   let usage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
@@ -136,7 +139,7 @@ export async function runWorkersAIInvestigation(
   let correction = "";
   for (let attempt = 0; attempt < 3 && !plan.length; attempt += 1) {
     try {
-      const proposed = parseJSON<PlanDecision>(await callModel(planningPrompt(incident, correction)));
+      const proposed = parseJSON<PlanDecision>(await callModel(planningPrompt(incident, correction, language)));
       const seen = new Set<AgentToolName>();
       plan = (Array.isArray(proposed.plan) ? proposed.plan : []).filter((item) => {
         if (!REQUIRED_TOOLS.includes(item.tool) || seen.has(item.tool)) return false;
@@ -162,7 +165,7 @@ export async function runWorkersAIInvestigation(
           : tool === "search_runbook"
             ? { query: `${incident.metric} anomaly ${incident.market} ${incident.device}` }
             : {},
-        rationale: "Required evidence check added by the investigation policy.",
+        rationale: language === "zh" ? "调查策略补充的必需证据检查。" : "Required evidence check added by the investigation policy.",
       });
     }
   }
@@ -173,7 +176,7 @@ export async function runWorkersAIInvestigation(
       args: item.args,
       rationale: item.rationale,
     };
-    const observation = executeAgentTool(request, incident);
+    const observation = executeAgentTool(request, incident, language);
     trace.push({
       step: index + 1,
       decision: item.rationale,
@@ -186,7 +189,7 @@ export async function runWorkersAIInvestigation(
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const decision = parseJSON<FinalDecision>(
-        await callModel(conclusionPrompt(incident, trace, correction))
+        await callModel(conclusionPrompt(incident, trace, correction, language))
       );
       if (!decision.hypothesis || !Array.isArray(decision.evidence) || !decision.recommendedAction) {
         throw new Error("Incomplete conclusion");
@@ -195,6 +198,7 @@ export async function runWorkersAIInvestigation(
         mode: "workers-ai-live" as const,
         model: MODEL,
         incidentId: incident.id,
+        language,
         detector: incident.detector,
         trace,
         conclusion: {

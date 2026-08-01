@@ -16,6 +16,7 @@ import { searchKnowledge } from "./knowledge";
 
 type LiveRun = {
   model: string;
+  language?: "zh" | "en";
   trace: Array<{
     step: number;
     decision: string;
@@ -153,7 +154,7 @@ export default function Home() {
   useEffect(() => {
     const restore = window.setTimeout(() => {
       try {
-        const savedRun = localStorage.getItem("adpilot:INC-2407:live-run");
+        const savedRun = localStorage.getItem("adpilot:INC-2407:live-run:zh") ?? localStorage.getItem("adpilot:INC-2407:live-run");
         if (savedRun) {
           setLiveRun(JSON.parse(savedRun) as LiveRun);
           setLiveRunStatus("done");
@@ -246,6 +247,8 @@ export default function Home() {
     try {
       const response = await fetch("/api/investigations/INC-2407/run", {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ language }),
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -254,7 +257,7 @@ export default function Home() {
       }
       const payload = await response.json() as LiveRun;
       setLiveRun(payload);
-      localStorage.setItem("adpilot:INC-2407:live-run", JSON.stringify(payload));
+      localStorage.setItem(`adpilot:INC-2407:live-run:${language}`, JSON.stringify(payload));
       setLiveRunStatus("done");
     } catch (error) {
       setLiveRunError(
@@ -277,6 +280,19 @@ export default function Home() {
     setDevice("Mobile");
     setShowEvidence(false);
     window.requestAnimationFrame(() => document.getElementById("live-investigation")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  }
+
+  function toggleLanguage() {
+    const nextLanguage = language === "zh" ? "en" : "zh";
+    setLanguage(nextLanguage);
+    try {
+      const saved = localStorage.getItem(`adpilot:INC-2407:live-run:${nextLanguage}`);
+      setLiveRun(saved ? JSON.parse(saved) as LiveRun : null);
+      setLiveRunStatus(saved ? "done" : "idle");
+    } catch {
+      setLiveRun(null);
+      setLiveRunStatus("idle");
+    }
   }
 
   async function scanInjectedAnomaly() {
@@ -316,7 +332,7 @@ export default function Home() {
       <section className="workspace">
         <header>
           <div><p className="eyebrow">{labels.controlCenter}</p><h1>{labels.hello}</h1><p>{labels.subtitle}</p></div>
-          <div className="headerActions"><button onClick={() => setLanguage(language === "zh" ? "en" : "zh")} className="languageButton">{language === "zh" ? "EN" : "中文"}</button><button onClick={startGuidedDemo} className="primary">{labels.action}</button></div>
+          <div className="headerActions"><button onClick={toggleLanguage} className="languageButton">{language === "zh" ? "EN" : "中文"}</button><button onClick={startGuidedDemo} className="primary">{labels.action}</button></div>
         </header>
 
         {view === "overview" ? <>
@@ -409,7 +425,7 @@ export default function Home() {
             )}
             {liveRun && (
               <section className="resultSummary" aria-label={language === "zh" ? "调查结果摘要" : "Investigation result summary"}>
-                <div className="resultSummaryHead"><div><span>{language === "zh" ? "调查结果" : "Investigation result"}</span><strong>{language === "zh" ? "根因与处置摘要" : "Root cause and action summary"}</strong></div><b>{Math.round(liveRun.conclusion.confidence * 100)}% {language === "zh" ? "置信度" : "confidence"}</b></div>
+                <div className="resultSummaryHead"><div><span>{language === "zh" ? "真实模型输出" : "LIVE MODEL OUTPUT"} · {liveRun.language === "en" ? "EN" : "中文"}</span><strong>{language === "zh" ? "根因与处置摘要" : "Root cause and action summary"}</strong></div><b>{Math.round(liveRun.conclusion.confidence * 100)}% {language === "zh" ? "置信度" : "confidence"}</b></div>
                 <div className="resultSummaryGrid">
                   <article><small>{language === "zh" ? "根因假设" : "ROOT-CAUSE HYPOTHESIS"}</small><p>{liveRun.conclusion.hypothesis}</p></article>
                   <article><small>{language === "zh" ? "建议动作" : "RECOMMENDED ACTION"}</small><p>{liveRun.conclusion.recommendedAction}</p></article>
@@ -616,10 +632,11 @@ function ModuleView({
         <article><strong>{quality.knownIncidentsFound}</strong><span>Known incidents found / 已知事件</span></article>
         <article><strong>{quality.unaffectedSegmentsAlerted}</strong><span>Unaffected alerts / 未受影响分组告警</span></article>
         <article><strong>-15%</strong><span>CTR threshold / 告警阈值</span></article>
-        <article><strong>10K/day</strong><span>Free Workers AI neurons</span></article>
+        <article><strong>10K/day</strong><span>{language === "zh" ? "Workers AI 当前免费额度" : "Current Workers AI free allocation"}</span><a href="https://developers.cloudflare.com/workers-ai/platform/pricing/" target="_blank" rel="noreferrer">{language === "zh" ? "Cloudflare 官方定价说明 ↗" : "Cloudflare pricing source ↗"}</a></article>
         <div className="evaluationDisclosure">
           <h3>{language === "zh" ? "评估边界：不是生产准确率声明" : "Evaluation boundary: not a production accuracy claim"}</h3>
           <p>{language === "zh" ? `这里只用 ${quality.sampleSize} 个已知事件做 14 天回放健全性检查。3/3 表示在当前阈值下找到了三个已知事件，不等于 100% 精确率、召回率或 F1。` : `This is a 14-day sanity check with ${quality.sampleSize} known incidents. 3/3 means the current thresholds found those incidents; it is not 100% precision, recall, or F1.`}</p>
+          <p>{language === "zh" ? "真实 LLM 评估范围：仅 INC-2407；其余两条为确定性回放。中英文运行使用独立缓存，模型输出与工具观测均按所选语言生成。" : "Live LLM evaluation scope: INC-2407 only; the other two are deterministic replays. Chinese and English runs use separate caches and language-matched model/tool output."}</p>
           <code>GET /api/evaluations</code>
         </div>
         <div className="thresholdTable">

@@ -37,7 +37,8 @@ export type LiveAgentTrace = {
 
 export function executeAgentTool(
   request: AgentToolRequest,
-  incident: DetectedAnomaly
+  incident: DetectedAnomaly,
+  language: "zh" | "en" = "en"
 ): ToolResult {
   if (request.tool === "query_metrics") {
     const market = request.args?.market ?? incident.market;
@@ -57,11 +58,11 @@ export function executeAgentTool(
       : 0;
     return {
       tool: request.tool,
-      purpose: request.rationale ?? "Measure the affected segment with live tool output",
+      purpose: request.rationale ?? (language === "zh" ? "使用实时工具结果衡量受影响分组" : "Measure the affected segment with live tool output"),
       result:
-        `${market} × ${device}, ${window}-day window: CTR ${(shift.baseline * 100).toFixed(2)}% → ` +
-        `${(shift.current * 100).toFixed(2)}% (${shift.zScore.toFixed(1)}σ); latency ` +
-        `+${Math.round(shift.latencyDeltaMs)}ms; daily revenue $${Math.round(historicalRevenue).toLocaleString()} → ` +
+        `${market} × ${device}，${window}${language === "zh" ? " 天窗口" : "-day window"}: CTR ${(shift.baseline * 100).toFixed(2)}% → ` +
+        `${(shift.current * 100).toFixed(2)}% (${shift.zScore.toFixed(1)}σ); ${language === "zh" ? "延迟" : "latency"} ` +
+        `+${Math.round(shift.latencyDeltaMs)}ms; ${language === "zh" ? "日收入" : "daily revenue"} $${Math.round(historicalRevenue).toLocaleString()} → ` +
         `$${Math.round(recentRevenue).toLocaleString()}.`,
       source: `campaign_metrics:${market}:${device}:${window}d`,
       status: "success",
@@ -73,8 +74,8 @@ export function executeAgentTool(
     const hits = searchKnowledge(query, 3);
     return {
       tool: request.tool,
-      purpose: request.rationale ?? "Ground the next step in approved operational knowledge",
-      result: hits.map((hit) => `${hit.citation}: ${hit.excerpt}`).join(" "),
+      purpose: request.rationale ?? (language === "zh" ? "使用已批准的业务知识约束下一步" : "Ground the next step in approved operational knowledge"),
+      result: hits.map((hit) => `${hit.citation}: ${language === "zh" ? hit.excerptZh : hit.excerpt}`).join(" "),
       source: hits.map((hit) => hit.citation).join(", "),
       status: "success",
     };
@@ -86,10 +87,10 @@ export function executeAgentTool(
     const changes = changeLog.filter((item) => item.market === market && item.device === device);
     return {
       tool: request.tool,
-      purpose: request.rationale ?? "Correlate the metric changepoint with an observed deployment or configuration change",
+      purpose: request.rationale ?? (language === "zh" ? "将指标变化点与实际发布或配置变更关联" : "Correlate the metric changepoint with an observed deployment or configuration change"),
       result: changes.length
-        ? changes.map((item) => `${item.change} · ${item.detail}`).join(" ")
-        : `No approved change-log entry found for ${market} × ${device}.`,
+        ? changes.map((item) => language === "zh" ? localizeChange(item.change, item.detail) : `${item.change} · ${item.detail}`).join(" ")
+        : language === "zh" ? `${market} × ${device} 没有已批准的变更日志记录。` : `No approved change-log entry found for ${market} × ${device}.`,
       source: `change_log:${market}:${device}`,
       status: "success",
     };
@@ -106,14 +107,35 @@ export function executeAgentTool(
   )[0];
   return {
     tool: request.tool,
-    purpose: request.rationale ?? "Compare with prior incidents before proposing a high-risk action",
+    purpose: request.rationale ?? (language === "zh" ? "提出高风险动作前对比历史事件" : "Compare with prior incidents before proposing a high-risk action"),
     result: [
-      historicalCase ? `${historicalCase.citation}: ${historicalCase.excerpt}` : "",
-      ...similar.map((item) => `${item.id}: ${item.cause}; action: ${item.action}.`),
+      historicalCase ? `${historicalCase.citation}: ${language === "zh" ? historicalCase.excerptZh : historicalCase.excerpt}` : "",
+      ...similar.map((item) => language === "zh" ? `${item.id}: ${localizeIncidentCause(item.id, item.cause)}；处置：${localizeIncidentAction(item.id, item.action)}。` : `${item.id}: ${item.cause}; action: ${item.action}.`),
     ].filter(Boolean).join(" "),
     source: [historicalCase?.citation, ...similar.map((item) => item.id)].filter(Boolean).join(", "),
     status: "success",
   };
+}
+
+function localizeChange(change: string, detail: string) {
+  if (change.includes("Release v3.18.4")) return "发布版本 v3.18.4 · 落地页渲染包已更新";
+  if (change.includes("Bid multiplier")) return "出价系数 1.0 → 1.3 · 人工配置变更";
+  if (change.includes("Conversion tag")) return "转化标签配置已更新 · 标签事件名发生变化";
+  return `${change} · ${detail}`;
+}
+
+function localizeIncidentCause(id: string, fallback: string) {
+  return ({
+    "INC-2406": "出价系数配置错误",
+    "INC-2405": "转化追踪标签配置变更",
+  } as Record<string, string>)[id] ?? fallback;
+}
+
+function localizeIncidentAction(id: string, fallback: string) {
+  return ({
+    "INC-2406": "审批后恢复原出价系数",
+    "INC-2405": "恢复标签配置并回填事件",
+  } as Record<string, string>)[id] ?? fallback;
 }
 
 export function investigateIncident(incident: DetectedAnomaly): ToolResult[] {

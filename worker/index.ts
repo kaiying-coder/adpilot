@@ -24,8 +24,8 @@ interface ExecutionContext {
 }
 
 const requestBuckets = new Map<string, number[]>();
-let investigationCache: { expiresAt: number; payload: Record<string, unknown> } | null = null;
-let investigationInFlight: Promise<Record<string, unknown>> | null = null;
+const investigationCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
+const investigationInFlight = new Map<string, Promise<Record<string, unknown>>>();
 const analystCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
 
 function clientKey(request: Request, scope: string) {
@@ -78,9 +78,12 @@ const worker = {
     ) {
       const incident = detectedAnomalies.find((item) => item.id === "INC-2407");
       if (!incident) return Response.json({ error: "Incident not found" }, { status: 404 });
+      const body = await request.json().catch(() => null) as { language?: "zh" | "en" } | null;
+      const language = body?.language === "en" ? "en" : "zh";
       const usePublicProtection = Boolean(request.headers.get("cf-connecting-ip"));
-      if (usePublicProtection && investigationCache && investigationCache.expiresAt > Date.now()) {
-        return Response.json({ ...investigationCache.payload, cache: { hit: true, ttlSeconds: 300 } });
+      const cachedInvestigation = investigationCache.get(language);
+      if (usePublicProtection && cachedInvestigation && cachedInvestigation.expiresAt > Date.now()) {
+        return Response.json({ ...cachedInvestigation.payload, cache: { hit: true, ttlSeconds: 300 } });
       }
       if (usePublicProtection && isRateLimited(clientKey(request, "investigation"), 3)) {
         return Response.json(
@@ -89,11 +92,11 @@ const worker = {
         );
       }
       try {
-        investigationInFlight ??= runWorkersAIInvestigation(incident, env.AI)
+        if (!investigationInFlight.has(language)) investigationInFlight.set(language, runWorkersAIInvestigation(incident, env.AI, language)
           .then((result) => result as unknown as Record<string, unknown>)
-          .finally(() => { investigationInFlight = null; });
-        const payload = await investigationInFlight;
-        if (usePublicProtection) investigationCache = { expiresAt: Date.now() + 300_000, payload };
+          .finally(() => { investigationInFlight.delete(language); }));
+        const payload = await investigationInFlight.get(language)!;
+        if (usePublicProtection) investigationCache.set(language, { expiresAt: Date.now() + 300_000, payload });
         return Response.json({ ...payload, cache: { hit: false, ttlSeconds: 300 } });
       } catch (error) {
         return Response.json(
