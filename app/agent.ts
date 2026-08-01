@@ -15,7 +15,7 @@ const changeLog = [
   { market: "UK", device: "Mobile", change: "Conversion tag configuration updated", detail: "Tag event name changed" },
 ];
 
-export type AgentToolName = "query_metrics" | "search_runbook" | "get_similar_incidents";
+export type AgentToolName = "query_metrics" | "query_change_log" | "search_runbook" | "get_similar_incidents";
 
 export type AgentToolRequest = {
   tool: AgentToolName;
@@ -76,6 +76,21 @@ export function executeAgentTool(
       purpose: request.rationale ?? "Ground the next step in approved operational knowledge",
       result: hits.map((hit) => `${hit.citation}: ${hit.excerpt}`).join(" "),
       source: hits.map((hit) => hit.citation).join(", "),
+      status: "success",
+    };
+  }
+
+  if (request.tool === "query_change_log") {
+    const market = request.args?.market ?? incident.market;
+    const device = request.args?.device ?? incident.device;
+    const changes = changeLog.filter((item) => item.market === market && item.device === device);
+    return {
+      tool: request.tool,
+      purpose: request.rationale ?? "Correlate the metric changepoint with an observed deployment or configuration change",
+      result: changes.length
+        ? changes.map((item) => `${item.change} · ${item.detail}`).join(" ")
+        : `No approved change-log entry found for ${market} × ${device}.`,
+      source: `change_log:${market}:${device}`,
       status: "success",
     };
   }

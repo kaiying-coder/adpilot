@@ -22,6 +22,8 @@ export default function Home() {
   const [approvalStatus, setApprovalStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
+  const [analystStatus, setAnalystStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [analystSources, setAnalystSources] = useState<string[]>([]);
   const [showEvidence, setShowEvidence] = useState(false);
   const [market, setMarket] = useState<Market | "All">("All");
   const [device, setDevice] = useState<Device | "All">("All");
@@ -165,12 +167,28 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [market, device, filteredRows]);
 
-  function askAgent() {
+  async function askAgent() {
     if (!query.trim()) return;
-    setAnswer(
-      `${incident.title} is the highest-impact matching event. ${incident.cause}. ` +
-      `Evidence: ${incident.evidence}. Recommended action: ${incident.action}.`
-    );
+    setAnalystStatus("running");
+    setAnswer("");
+    setAnalystSources([]);
+    try {
+      const response = await fetch("/api/analyst/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: query.trim(), market, device, language }),
+      });
+      if (!response.ok) throw new Error("Analyst unavailable");
+      const payload = await response.json();
+      setAnswer(payload.answer);
+      setAnalystSources(payload.sources ?? []);
+      setAnalystStatus("done");
+    } catch {
+      setAnswer(language === "zh"
+        ? "真实 AI 分析暂时不可用。筛选后的指标仍然有效，请稍后重试；系统不会用预设结论代替模型回答。"
+        : "The live AI analyst is temporarily unavailable. Filtered metrics remain valid; retry later. No preset conclusion was substituted.");
+      setAnalystStatus("error");
+    }
   }
 
   async function approveAction() {
@@ -459,9 +477,9 @@ export default function Home() {
 
         <section className="bottomGrid">
           <div className="panel ask">
-            <div className="panelHead"><div><h2>{labels.ask}</h2><p>{labels.askHint}</p></div><span className="aiTag">✦ AI ANALYST</span></div>
-            <div className="queryBox"><input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && askAgent()} placeholder={language === "zh" ? "为什么美国移动端收入昨天下降？" : "Why did US mobile revenue decline yesterday?"} /><button onClick={askAgent}>{language === "zh" ? "提问 →" : "Ask →"}</button></div>
-            {answer ? <div className="answer"><strong>{language === "zh" ? "结论 · 基于 14 天回放" : "Finding · grounded 14-day replay"}</strong><p>{answer}</p><small>{language === "zh" ? "来源：筛选后的广告指标 · 检测事件 · 已批准运行手册" : "Sources: filtered campaign metrics · detected incident · approved runbook"}</small></div> :
+            <div className="panelHead"><div><h2>{labels.ask}</h2><p>{labels.askHint}</p></div><span className="aiTag">✦ WORKERS AI · LIVE</span></div>
+            <div className="queryBox"><input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && askAgent()} placeholder={language === "zh" ? "为什么美国移动端收入昨天下降？" : "Why did US mobile revenue decline yesterday?"} /><button disabled={analystStatus === "running"} onClick={askAgent}>{analystStatus === "running" ? (language === "zh" ? "分析中…" : "Analyzing…") : (language === "zh" ? "提问 →" : "Ask →")}</button></div>
+            {answer ? <div className={`answer ${analystStatus === "error" ? "answerError" : ""}`}><strong>{analystStatus === "error" ? (language === "zh" ? "安全降级" : "Safe fallback") : (language === "zh" ? "真实 AI 结论 · 基于当前筛选" : "Live AI finding · current filters")}</strong><p>{answer}</p><small>{analystSources.length ? `${language === "zh" ? "来源" : "Sources"}: ${analystSources.join(" · ")}` : (language === "zh" ? "未生成模型结论" : "No model conclusion generated")}</small></div> :
               <div className="suggestions"><span>{language === "zh" ? "试着问：" : "Try asking:"}</span><button onClick={() => setQuery("Compare CTR by market")}>{language === "zh" ? "按市场比较 CTR" : "Compare CTR by market"}</button><button onClick={() => setQuery("Show costly anomalies")}>{language === "zh" ? "显示高成本异常" : "Show costly anomalies"}</button></div>}
           </div>
           <div className="panel evaluation">

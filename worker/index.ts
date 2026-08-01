@@ -3,6 +3,7 @@ import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } fr
 import handler from "vinext/server/app-router-entry";
 import { detectedAnomalies } from "../app/data";
 import { runWorkersAIInvestigation, type WorkersAIBinding } from "../app/workers-ai";
+import { askWorkersAIAnalyst } from "../app/analyst";
 
 interface Env {
   ASSETS: Fetcher;
@@ -20,6 +21,24 @@ interface Env {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+const requestBuckets = new Map<string, number[]>();
+let investigationCache: { expiresAt: number; payload: Record<string, unknown> } | null = null;
+let investigationInFlight: Promise<Record<string, unknown>> | null = null;
+const analystCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
+
+function clientKey(request: Request, scope: string) {
+  return `${scope}:${request.headers.get("cf-connecting-ip") ?? "anonymous"}`;
+}
+
+function isRateLimited(key: string, limit: number, windowMs = 60_000) {
+  const now = Date.now();
+  const recent = (requestBuckets.get(key) ?? []).filter((timestamp) => now - timestamp < windowMs);
+  if (recent.length >= limit) return true;
+  recent.push(now);
+  requestBuckets.set(key, recent);
+  return false;
 }
 
 function classifyAIError(error: unknown) {
@@ -59,8 +78,23 @@ const worker = {
     ) {
       const incident = detectedAnomalies.find((item) => item.id === "INC-2407");
       if (!incident) return Response.json({ error: "Incident not found" }, { status: 404 });
+      const usePublicProtection = Boolean(request.headers.get("cf-connecting-ip"));
+      if (usePublicProtection && investigationCache && investigationCache.expiresAt > Date.now()) {
+        return Response.json({ ...investigationCache.payload, cache: { hit: true, ttlSeconds: 300 } });
+      }
+      if (usePublicProtection && isRateLimited(clientKey(request, "investigation"), 3)) {
+        return Response.json(
+          { error: "Live investigation rate limit reached", errorCode: "RATE_LIMITED", retryable: true, retryAfterSeconds: 60 },
+          { status: 429, headers: { "retry-after": "60" } }
+        );
+      }
       try {
-        return Response.json(await runWorkersAIInvestigation(incident, env.AI));
+        investigationInFlight ??= runWorkersAIInvestigation(incident, env.AI)
+          .then((result) => result as unknown as Record<string, unknown>)
+          .finally(() => { investigationInFlight = null; });
+        const payload = await investigationInFlight;
+        if (usePublicProtection) investigationCache = { expiresAt: Date.now() + 300_000, payload };
+        return Response.json({ ...payload, cache: { hit: false, ttlSeconds: 300 } });
       } catch (error) {
         return Response.json(
           {
@@ -68,6 +102,44 @@ const worker = {
             errorCode: classifyAIError(error),
             retryable: true,
           },
+          { status: 502 }
+        );
+      }
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/analyst/ask") {
+      const body = await request.json().catch(() => null) as {
+        question?: string;
+        market?: "All" | "US" | "DE" | "UK";
+        device?: "All" | "Mobile" | "Desktop";
+        language?: "zh" | "en";
+      } | null;
+      const question = body?.question?.trim() ?? "";
+      const market = body?.market ?? "All";
+      const device = body?.device ?? "All";
+      const language = body?.language ?? "zh";
+      if (!question || question.length > 300) {
+        return Response.json({ error: "Question must contain 1–300 characters." }, { status: 400 });
+      }
+      const cacheKey = `${language}:${market}:${device}:${question.toLowerCase()}`;
+      const usePublicProtection = Boolean(request.headers.get("cf-connecting-ip"));
+      const cached = analystCache.get(cacheKey);
+      if (usePublicProtection && cached && cached.expiresAt > Date.now()) {
+        return Response.json({ ...cached.payload, cache: { hit: true, ttlSeconds: 120 } });
+      }
+      if (usePublicProtection && isRateLimited(clientKey(request, "analyst"), 8)) {
+        return Response.json(
+          { error: "Analyst rate limit reached", errorCode: "RATE_LIMITED", retryable: true, retryAfterSeconds: 60 },
+          { status: 429, headers: { "retry-after": "60" } }
+        );
+      }
+      try {
+        const payload = await askWorkersAIAnalyst({ question, market, device, language }, env.AI) as unknown as Record<string, unknown>;
+        if (usePublicProtection) analystCache.set(cacheKey, { expiresAt: Date.now() + 120_000, payload });
+        return Response.json({ ...payload, cache: { hit: false, ttlSeconds: 120 } });
+      } catch {
+        return Response.json(
+          { error: "Workers AI analyst failed", errorCode: "AI_UPSTREAM_ERROR", retryable: true },
           { status: 502 }
         );
       }

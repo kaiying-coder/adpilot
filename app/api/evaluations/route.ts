@@ -14,8 +14,8 @@ export async function GET() {
     },
     agent: {
       liveLlmScope: "INC-2407",
-      model: "@cf/meta/llama-3.1-8b-instruct-fast",
-      requiredTools: ["query_metrics", "search_runbook", "get_similar_incidents"],
+      model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+      requiredTools: ["query_metrics", "query_change_log", "search_runbook", "get_similar_incidents"],
       approvalGuardrail: "required",
       paidApiKeyRequired: false,
       workersAiFreeAllocation: "10,000 neurons/day",

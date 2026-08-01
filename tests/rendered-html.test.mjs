@@ -9,6 +9,7 @@ const aiDecisions = [
   {
     plan: [
       { tool: "query_metrics", args: { market: "US", device: "Mobile", window: 14 }, rationale: "Measure the affected segment." },
+      { tool: "query_change_log", args: { market: "US", device: "Mobile" }, rationale: "Correlate the deployment." },
       { tool: "search_runbook", args: { query: "CTR latency release rollback" }, rationale: "Ground the investigation." },
       { tool: "get_similar_incidents", args: {}, rationale: "Compare prior incidents." },
     ],
@@ -18,7 +19,7 @@ const aiDecisions = [
     evidence: ["Computed metric shift", "Approved runbook", "Similar incident"],
     recommendedAction: "Request approval to roll back v3.18.4.",
     confidence: 0.91,
-    rationale: "Three independent observations support the same cause.",
+    rationale: "Four independent observations support the same cause.",
   },
 ];
 const env = {
@@ -57,6 +58,7 @@ test("renders the AdPilot product shell", async () => {
   assert.match(html, /KPI、趋势和异常列表按筛选条件/);
   assert.match(html, /不是生产准确率声明/);
   assert.match(html, /不等于 100% 精确率、召回率或 F1/);
+  assert.match(html, /WORKERS AI · LIVE/);
   assert.doesNotMatch(html, /Yilin/);
   assert.doesNotMatch(html, /CTR shifted 3\.7σ|latency rose 920ms/);
   assert.doesNotMatch(html, /Rollback release v3\.18\.4/);
@@ -120,14 +122,51 @@ test("INC-2407 runs a live Workers AI tool loop", async () => {
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.mode, "workers-ai-live");
-  assert.equal(body.trace.length, 3);
+  assert.equal(body.trace.length, 4);
   assert.deepEqual(body.trace.map((item) => item.request.tool), [
     "query_metrics",
+    "query_change_log",
     "search_runbook",
     "get_similar_incidents",
   ]);
   assert.equal(body.conclusion.confidence, 0.91);
   assert.match(body.guardrail, /approval/i);
+});
+
+test("public live runs reuse a short cache instead of spending AI quota repeatedly", async () => {
+  aiCall = 0;
+  const init = { method: "POST", headers: { "cf-connecting-ip": "203.0.113.9" } };
+  const first = await request("/api/investigations/INC-2407/run", init);
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).cache.hit, false);
+  const callsAfterFirst = aiCall;
+  const second = await request("/api/investigations/INC-2407/run", init);
+  assert.equal(second.status, 200);
+  assert.equal((await second.json()).cache.hit, true);
+  assert.equal(aiCall, callsAfterFirst);
+});
+
+test("AI analyst answers from the deployed model with filters and sources", async () => {
+  const analystEnv = {
+    ...env,
+    AI: {
+      run: async () => ({
+        response: "美国移动端 CTR 下降与延迟上升同时出现；当前证据支持继续核查版本变更。 [RB-014 §1]",
+        usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 },
+      }),
+    },
+  };
+  const response = await requestWithEnv("/api/analyst/ask", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question: "为什么 CTR 下降？", market: "US", device: "Mobile", language: "zh" }),
+  }, analystEnv);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.mode, "workers-ai-grounded");
+  assert.deepEqual(body.filters, { market: "US", device: "Mobile" });
+  assert.match(body.answer, /CTR/);
+  assert.ok(body.sources.includes("campaign_metrics:14d"));
 });
 
 test("AI outage returns a safe, retryable error for graceful degradation", async () => {

@@ -9,6 +9,7 @@ import type { DetectedAnomaly } from "./data";
 const MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
 const REQUIRED_TOOLS: AgentToolName[] = [
   "query_metrics",
+  "query_change_log",
   "search_runbook",
   "get_similar_incidents",
 ];
@@ -70,12 +71,13 @@ ${JSON.stringify({
 
 Available read-only tools:
 - query_metrics({ market, device, window }): executes against the 14-day metric table.
+- query_change_log({ market, device }): reads approved deployment and configuration changes for the affected segment.
 - search_runbook({ query }): retrieves approved runbooks with citations.
 - get_similar_incidents({}): retrieves prior incident evidence.
 
 Use each available tool exactly once. Choose the metric dimensions, search query, and order.
 Respond in this shape:
-{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"search_runbook","args":{"query":"CTR anomaly investigation"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
+{"plan":[{"tool":"query_metrics","args":{"market":"US","device":"Mobile","window":14},"rationale":"Measure the affected segment."},{"tool":"query_change_log","args":{"market":"US","device":"Mobile"},"rationale":"Correlate the changepoint with a real change."},{"tool":"search_runbook","args":{"query":"CTR anomaly investigation"},"rationale":"Retrieve approved guidance."},{"tool":"get_similar_incidents","args":{},"rationale":"Compare prior evidence."}]}
 Every tool value must exactly match one available tool.
 ${correction ? `Correction from the previous attempt: ${correction}` : ""}
 `.trim();
@@ -145,7 +147,7 @@ export async function runWorkersAIInvestigation(
       if (error instanceof Error && error.message.includes("upstream request failed")) throw error;
       plan = [];
     }
-    correction = "Return a plan array using each of the three exact tool names once.";
+    correction = "Return a plan array using each of the four exact tool names once.";
   }
 
   const plannedTools = new Set(plan.map((item) => item.tool));
@@ -155,6 +157,8 @@ export async function runWorkersAIInvestigation(
         tool,
         args: tool === "query_metrics"
           ? { market: incident.market, device: incident.device, window: 14 }
+          : tool === "query_change_log"
+            ? { market: incident.market, device: incident.device }
           : tool === "search_runbook"
             ? { query: `${incident.metric} anomaly ${incident.market} ${incident.device}` }
             : {},

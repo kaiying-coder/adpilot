@@ -39,7 +39,7 @@ The demo supports Chinese and English. Three seeded incidents are available:
 
 | Job signal | Evidence in AdPilot |
 | --- | --- |
-| AI coding and software engineering | Typed React/TypeScript product, eight REST routes, automated tests |
+| AI coding and software engineering | Typed React/TypeScript product, nine REST routes, automated tests |
 | Internal AI productivity tooling | Replaces manual alert triage, evidence collection, and incident reporting |
 | Product sense | Prioritized incident queue, explainable evidence, human approval, recovery monitoring |
 | Agent automation | Live Llama tool loop for INC-2407 plus an auditable approval state machine |
@@ -59,7 +59,8 @@ flowchart LR
   C --> D[Agent plan]
   D --> E[Workers AI chooses tools]
   D --> F[RAG knowledge search]
-  E --> G[Verified root cause]
+  E --> X[Change log evidence]
+  X --> G[Verified root cause]
   F --> G
   G --> H{Risk check}
   H -->|High risk| I[Human approval]
@@ -98,6 +99,7 @@ the visitor to supply an API key. See the complete
 | `POST /api/anomalies/scan` | Inject and scan a new, non-preset anomaly |
 | `GET /api/investigations/:id` | Agent workflow and tool trace |
 | `POST /api/investigations/INC-2407/run` | Live Workers AI tool loop |
+| `POST /api/analyst/ask` | Grounded Workers AI answer using current filters |
 | `POST /api/investigations/:id/approve` | Explicit simulated approval |
 | `GET /api/knowledge?q=latency` | Ranked knowledge hits with citations |
 | `GET /api/evaluations` | Detector, retrieval, agent, and cost metrics |
@@ -148,6 +150,7 @@ The suite verifies:
 
 - No real advertising account is connected.
 - All write actions are simulated.
+- Live investigation responses are cached for five minutes and public callers are rate limited to protect demo capacity.
 - High-risk actions require explicit approval.
 - Agent conclusions expose their data and knowledge sources.
 - Retrieval returns citations and refuses unsupported results.
@@ -159,7 +162,7 @@ The suite verifies:
 - TypeScript, React, Next.js-compatible Vinext runtime
 - Cloudflare Workers + Workers AI (`@cf/meta/llama-3.1-8b-instruct-fp8`)
 - Statistical z-score/changepoint detection over 14-day campaign data
-- LLM-selected tools with computed observations and a concise decision trace
+- LLM-planned metric, change-log, knowledge, and prior-incident tools with computed observations and a concise decision trace
 - Local weighted retrieval over approved runbooks and historical cases
 - Node test runner for end-to-end API verification
 

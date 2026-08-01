@@ -73,6 +73,27 @@ paths:
         - { name: q, in: query, schema: { type: string, example: latency } }
       responses:
         "200": { description: Ranked passages with document citations }
+  /api/analyst/ask:
+    post:
+      summary: Ask the grounded Workers AI monetization analyst
+      description: Uses current filters, computed 14-day metrics, detected incidents, and approved knowledge. Public calls are rate limited and identical questions are briefly cached.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, maxLength: 300 }
+                market: { type: string, enum: [All, US, DE, UK], default: All }
+                device: { type: string, enum: [All, Mobile, Desktop], default: All }
+                language: { type: string, enum: [zh, en], default: zh }
+      responses:
+        "200": { description: Grounded model answer, filters, sources, usage, and cache status }
+        "400": { description: Invalid question }
+        "429": { description: Public demo rate limit reached }
+        "502": { description: Workers AI inference failed }
   /api/evaluations:
     get:
       summary: Read detector, retrieval, agent, latency, and cost evaluations
