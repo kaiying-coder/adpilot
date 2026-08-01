@@ -14,6 +14,24 @@ import {
 import { investigateIncident } from "./agent";
 import { searchKnowledge } from "./knowledge";
 
+type LiveRun = {
+  model: string;
+  trace: Array<{
+    step: number;
+    decision: string;
+    request: { tool: string; args: Record<string, unknown>; rationale: string };
+    observation: { tool: string; purpose: string; result: string; source: string };
+  }>;
+  conclusion: {
+    hypothesis: string;
+    evidence: string[];
+    recommendedAction: string;
+    confidence: number;
+    rationale: string;
+  };
+  billing: { freeAllocation: string };
+};
+
 export default function Home() {
   const [view, setView] = useState<"overview" | "incidents" | "runs" | "knowledge" | "evaluations">("overview");
   const [language, setLanguage] = useState<"zh" | "en">("zh");
@@ -30,23 +48,7 @@ export default function Home() {
   const [liveRunStatus, setLiveRunStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [liveRunError, setLiveRunError] = useState("");
   const [liveRunSlow, setLiveRunSlow] = useState(false);
-  const [liveRun, setLiveRun] = useState<{
-    model: string;
-    trace: Array<{
-      step: number;
-      decision: string;
-      request: { tool: string; args: Record<string, unknown>; rationale: string };
-      observation: { tool: string; purpose: string; result: string; source: string };
-    }>;
-    conclusion: {
-      hypothesis: string;
-      evidence: string[];
-      recommendedAction: string;
-      confidence: number;
-      rationale: string;
-    };
-    billing: { freeAllocation: string };
-  } | null>(null);
+  const [liveRun, setLiveRun] = useState<LiveRun | null>(null);
   const [injection, setInjection] = useState<InjectionRequest>({
     market: "DE",
     device: "Mobile",
@@ -149,6 +151,30 @@ export default function Home() {
   }, [language]);
 
   useEffect(() => {
+    const restore = window.setTimeout(() => {
+      try {
+        const savedRun = localStorage.getItem("adpilot:INC-2407:live-run");
+        if (savedRun) {
+          setLiveRun(JSON.parse(savedRun) as LiveRun);
+          setLiveRunStatus("done");
+        }
+      } catch {
+        localStorage.removeItem("adpilot:INC-2407:live-run");
+      }
+    }, 0);
+    return () => window.clearTimeout(restore);
+  }, []);
+
+  useEffect(() => {
+    const restore = window.setTimeout(() => {
+      const savedApproval = localStorage.getItem(`adpilot:${incident.id}:approval`);
+      setApproved(incident.status === "Resolved" || Boolean(savedApproval));
+      setApprovalStatus(savedApproval ? "saved" : "idle");
+    }, 0);
+    return () => window.clearTimeout(restore);
+  }, [incident.id, incident.status]);
+
+  useEffect(() => {
     let cancelled = false;
     fetch(`/api/metrics?market=${market}&device=${device}`)
       .then((response) => response.ok ? response.json() : Promise.reject())
@@ -226,7 +252,9 @@ export default function Home() {
         const payload = await response.json().catch(() => null);
         throw new Error(payload?.errorCode ?? payload?.error ?? "AI_UPSTREAM_ERROR");
       }
-      setLiveRun(await response.json());
+      const payload = await response.json() as LiveRun;
+      setLiveRun(payload);
+      localStorage.setItem("adpilot:INC-2407:live-run", JSON.stringify(payload));
       setLiveRunStatus("done");
     } catch (error) {
       setLiveRunError(
@@ -245,12 +273,9 @@ export default function Home() {
   function startGuidedDemo() {
     setView("overview");
     setSelected(0);
-    setApproved(false);
     setMarket("US");
     setDevice("Mobile");
     setShowEvidence(false);
-    setLiveRun(null);
-    setLiveRunStatus("idle");
     window.requestAnimationFrame(() => document.getElementById("live-investigation")?.scrollIntoView({ behavior: "smooth", block: "center" }));
   }
 
@@ -346,7 +371,7 @@ export default function Home() {
               {visibleAnomalies.map((item) => {
                 const index = detectedAnomalies.findIndex((candidate) => candidate.id === item.id);
                 return (
-                <button key={item.id} onClick={() => { setSelected(index); setApproved(item.status === "Resolved"); setMarket(item.market); setDevice(item.device); setShowEvidence(false); }} className={`incident ${selected === index ? "selected" : ""}`}>
+                <button key={item.id} onClick={() => { setSelected(index); setMarket(item.market); setDevice(item.device); setShowEvidence(false); }} className={`incident ${selected === index ? "selected" : ""}`}>
                   <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
                   <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><small>{item.id} · ${item.estimatedImpact.toLocaleString()}/{language === "zh" ? "日影响" : "day impact"}</small></div>
                   <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em><span className="status">{localizedStatus(item.status, language)}</span><span className="arrow">›</span>
@@ -469,7 +494,7 @@ export default function Home() {
             <div className={`scanResult ${scanResult.detected ? "found" : "clear"}`}>
               <strong>{scanResult.detected ? (language === "zh" ? "✓ 检测到未预设异常" : "✓ Unseen anomaly detected") : (language === "zh" ? "未越过当前阈值" : "Below current threshold")}</strong>
               <p>{scanResult.rowsScanned} rows scanned · {injection.market} × {injection.device} × {injection.metric} · injected {injection.deltaPct > 0 ? "+" : ""}{injection.deltaPct}%</p>
-              {scanResult.anomaly && <small>{scanResult.anomaly.id} · observed {scanResult.anomaly.delta}% · {Math.abs(scanResult.anomaly.detector?.zScore ?? 0).toFixed(1)}σ · changepoint {scanResult.anomaly.detector?.changePoint}</small>}
+              {scanResult.anomaly && <small>{scanResult.anomaly.id} · {language === "zh" ? "观测变化" : "observed"} {scanResult.anomaly.delta.toFixed(1)}% · {Math.abs(scanResult.anomaly.detector?.zScore ?? 0).toFixed(1)}σ · {language === "zh" ? "变化点" : "changepoint"} {scanResult.anomaly.detector?.changePoint}</small>}
             </div>
           )}
           {scanStatus === "error" && <div className="runError">{language === "zh" ? "扫描失败，请重试。" : "Scan failed. Retry."}</div>}
@@ -493,7 +518,7 @@ export default function Home() {
             <p className="evaluationCaveat">{language === "zh" ? "评估边界：N=3 只做回放健全性检查，不是生产准确率声明；3/3 不等于 100% 精确率、召回率或 F1。" : "Boundary: N=3 is a replay sanity check, not a production accuracy claim; 3/3 is not 100% precision, recall, or F1."}</p>
           </div>
         </section>
-        </> : <ModuleView view={view} language={language} setView={setView} />}
+        </> : <ModuleView view={view} language={language} setView={setView} liveRun={liveRun} />}
       </section>
     </main>
   );
@@ -519,14 +544,26 @@ function localizedStatus(status: string, language: "zh" | "en") {
   return statuses[status] ?? status;
 }
 
+function localizedIncidentEvidence(id: string, fallback: string, language: "zh" | "en") {
+  if (language === "en") return fallback;
+  const evidence: Record<string, string> = {
+    "INC-2407": "CTR 显著偏离统计基线，同时移动端延迟明显上升。",
+    "INC-2406": "支出高于七日基线，但转化量没有同步提升。",
+    "INC-2405": "点击量保持稳定，但已记录的转化与收入下降。",
+  };
+  return evidence[id] ?? fallback;
+}
+
 function ModuleView({
   view,
   language,
   setView,
+  liveRun,
 }: {
   view: "incidents" | "runs" | "knowledge" | "evaluations";
   language: "zh" | "en";
   setView: (view: "overview" | "incidents" | "runs" | "knowledge" | "evaluations") => void;
+  liveRun: LiveRun | null;
 }) {
   const titles = language === "zh"
     ? { incidents: "异常中心", runs: "Agent运行记录", knowledge: "知识库", evaluations: "评估中心" }
@@ -546,7 +583,7 @@ function ModuleView({
         {detectedAnomalies.map((item) => (
           <button className="moduleCard" key={item.id} onClick={() => setView("overview")}>
             <span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span>
-            <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><p>{item.evidence}</p><small>{item.id} · {localizedStatus(item.status, language)}</small></div>
+            <div><strong>{localizedIncidentTitle(item.id, item.title, language)}</strong><p>{localizedIncidentEvidence(item.id, item.evidence, language)}</p><small>{item.id} · {localizedStatus(item.status, language)}</small></div>
             <em>{item.delta > 0 ? "+" : ""}{item.delta}%</em>
           </button>
         ))}
@@ -557,7 +594,9 @@ function ModuleView({
           <article key={item.id}>
             <div><span className="liveDot">TRACE</span><strong>{item.id} · {localizedIncidentTitle(item.id, item.title, language)}</strong><small>{localizedStatus(item.status, language)}</small></div>
             {item.id === "INC-2407"
-              ? <p><code>live_only</code><span>{language === "zh" ? "该事件的 trace 不预置；请从总览运行真实 AI 调查后查看。" : "No trace is preloaded. Run the live AI investigation from Overview to generate it."}</span><em>○</em></p>
+              ? liveRun
+                ? liveRun.trace.map((step) => <p key={`${step.step}-${step.request.tool}`}><code>{step.request.tool}</code><span>{step.observation.result}</span><em>✓</em></p>)
+                : <p><code>live_only</code><span>{language === "zh" ? "尚未生成真实轨迹；请从总览运行真实 AI 调查。完成后记录会保存在此浏览器。" : "No live trace yet. Run the real AI investigation from Overview; the result will persist in this browser."}</span><em>○</em></p>
               : investigateIncident(item).map((tool) => <p key={tool.tool}><code>{tool.tool}</code><span>{tool.result}</span><em>✓</em></p>)}
           </article>
         ))}
@@ -569,7 +608,7 @@ function ModuleView({
           <span>{knowledgeHits.length} results · GET /api/knowledge</span>
         </div>
         <div className="knowledgeGrid">
-          {knowledgeHits.map((hit) => <article key={hit.document.id}><span>{hit.document.approved ? "APPROVED" : "DRAFT"} · SCORE {hit.score}</span><strong>{language === "zh" ? hit.document.titleZh : hit.document.titleEn}</strong><p>{hit.excerpt}</p><small>{hit.citation} · {hit.document.type}</small></article>)}
+          {knowledgeHits.map((hit) => <article key={hit.document.id}><span>{hit.document.approved ? (language === "zh" ? "已批准" : "APPROVED") : (language === "zh" ? "草稿" : "DRAFT")} · {language === "zh" ? "得分" : "SCORE"} {hit.score}</span><strong>{language === "zh" ? hit.document.titleZh : hit.document.titleEn}</strong><p>{language === "zh" ? hit.excerptZh : hit.excerpt}</p><small>{hit.citation} · {hit.document.type}</small></article>)}
         </div>
       </>}
 

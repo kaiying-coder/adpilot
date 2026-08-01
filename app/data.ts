@@ -274,6 +274,7 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
           detector: detection.detector,
         }
       : {
+          ...detection,
           id: `INC-AUTO-${index + 1}`,
           title: `${detection.market} · ${detection.device} ${detection.metric} anomaly`,
           severity: Math.abs(detection.delta) >= 25 ? "P1" : "P2",
@@ -282,7 +283,7 @@ export function detectAnomalies(rows: AdMetric[]): DetectedAnomaly[] {
           evidence: `${detection.metric} deviated ${Math.abs(detection.delta).toFixed(1)}% from baseline`,
           action: "Start an automated investigation",
           estimatedImpact: 0,
-          ...detection,
+          delta: Number(detection.delta.toFixed(1)),
         };
   });
 }

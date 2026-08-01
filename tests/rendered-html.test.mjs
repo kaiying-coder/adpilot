@@ -114,6 +114,7 @@ test("scanner detects a newly injected, non-preset segment", async () => {
   assert.equal(body.anomaly.market, "DE");
   assert.equal(body.anomaly.device, "Mobile");
   assert.equal(body.anomaly.metric, "CTR");
+  assert.equal(body.anomaly.delta, Number(body.anomaly.delta.toFixed(1)));
 });
 
 test("INC-2407 runs a live Workers AI tool loop", async () => {
@@ -196,6 +197,7 @@ test("knowledge API returns ranked citations", async () => {
   assert.ok(body.hits.length > 0);
   assert.match(body.hits[0].citation, /§1/);
   assert.ok(body.hits[0].score > 0);
+  assert.match(body.hits[0].excerptZh, /延迟|点击率|CTR/);
 });
 
 test("approval API requires an explicit decision", async () => {
